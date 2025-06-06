@@ -1,0 +1,8 @@
+"0","ggplot(entropy_clusters, aes(x = Spatial_cluster, y = log10(Value_entropy), fill = Spatial_cluster)) +"
+"0","  geom_violin(trim = FALSE, alpha = 0.7, scale = ""width"") +"
+"0","  geom_jitter(width = 0.2, alpha = 0.5, color = ""black"") +"
+"0","  labs(title = ""CD8 enrichment across megaclusters"","
+"0","       x = ""Megaclusters"","
+"0","       y = ""log10(Entropy)"") +"
+"0","  theme_minimal() +"
+"0","  theme(axis.text.x = element_text(angle = 45, hjust = 1))"

@@ -1,0 +1,101 @@
+---
+title: "CellTFusion"
+author: "Marcelo Hurtado"
+date: "2025-05-19"
+output: html_document
+---
+
+Load CellTFusion
+```{r}
+source("~/Documents/CellTFusion_paper/user_projects/src/environment_set.R")
+source("~/Documents/CellTFusion_paper/user_projects/src/cell_deconvolution.R")
+set.seed(123)
+```
+
+Load data
+```{r}
+megaclusters_entropy = read.csv("../input/MegaClusters_entropy.csv", row.names = 1)
+megaclusters_area = read.csv("../input/MegaClusters_area.csv", row.names = 1)
+counts = read.csv("../../LungPredict2/Data/Gobbini/Raw_files/counts_raw.csv", row.names = 1) 
+traitData = read.csv("../../LungPredict2/Data/Gobbini/Raw_files/clinical_data_clean.csv")
+deconv = read.csv("../input/Deconvolution_Gobbini.csv", row.names = 1)
+counts = counts[,colnames(counts) %in% rownames(megaclusters_entropy)]
+counts = counts[,rownames(megaclusters_entropy)]
+all.equal(colnames(counts), rownames(megaclusters_entropy))
+
+traitData = traitData %>%
+  dplyr::filter(N_Raw_matrice_Bulk %in% colnames(counts)) %>%
+  tibble::column_to_rownames("N_Raw_matrice_Bulk")
+traitData <- traitData[colnames(counts), ]
+
+deconv = deconv[rownames(traitData),]
+```
+
+Cell subgroups
+```{r}
+library(multideconv)
+deconv_subgroups = compute.deconvolution.analysis(deconvolution = deconv, 
+                                                  corr = 0.7, 
+                                                  seed = 123, 
+                                                  file_name = "Gobbini", 
+                                                  cells_extra = c("tpDC", "tDC1", "tDC2", "tDC3", "Plasma"),
+                                                  return = TRUE) 
+save(deconv_subgroups, file = "Deconv_subgroups.RData")
+```
+
+Normalize counts
+```{r}
+counts.norm = ADImpute::NormalizeTPM(counts, log = T)
+```
+
+TF activity
+```{r}
+tfs = compute.TFs.activity(counts.norm)
+```
+
+TF network
+```{r}
+network = compute.WTCNA(tfs, corr_mod = 0.8, clustering.method = "ward.D2", return = T) 
+```
+
+Pathways information
+```{r}
+pathways = compute.pathway.activity(counts.norm)
+#Association of TFs modules with pathways
+compute.modules.relationship(network[[1]], pathways, "Pathways_Progeny-TFs_Modules", width = 10)
+```
+
+Metadata association 
+```{r}
+coldata = traitData %>%
+  dplyr::select(Site_biopsie, PDL1_higher.than_75, Histologie, ECOG, R.NR)
+
+compute.metada.association(network[[1]], coldata, pval = 0.05, width = 10, height = 10) 
+compute.metada.association(megaclusters_area, coldata, pval = 0.05, width = 10, height = 10) 
+compute.metada.association(megaclusters_entropy, coldata, pval = 0.05, width = 10, height = 10) 
+```
+
+Features association 
+```{r}
+compute.modules.relationship(network[[1]], megaclusters_area, "TFs-MegaClusters_area", height = 6, width = 10, pval = 0.05, par_mar = c(10, 30, 5, 1))
+compute.modules.relationship(network[[1]], megaclusters_entropy, "TFs-MegaClusters_entropy", height = 6, width = 10, pval = 0.05, par_mar = c(10, 30, 5, 1))
+```
+
+CD8 enrichment deconvolution 
+```{r}
+load("../input/Deconv_subgroups.RData")
+cd8_deconv = deconv_subgroups$`Deconvolution subgroups per cell types`$CD8.cells
+compute.modules.relationship(megaclusters_area, cd8_deconv, "CD8-MegaClusters_area", height = 6, width = 10, pval = 0.05, par_mar = c(15, 30, 5, 1))
+compute.modules.relationship(megaclusters_entropy, cd8_deconv, "CD8-MegaClusters_entropy", height = 6, width = 10, pval = 0.05, par_mar = c(15, 30, 5, 1))
+compute.metada.association(cd8_deconv, coldata, pval = 0.05, width = 8, height = 10) 
+```
+
+CD8 enrichment 
+```{r}
+load("../input/Spatial_CD8enrich.RData")
+data_spatial$Stroma = data_spatial$Stroma[rownames(df_area),]
+compute.modules.relationship(df_area, data_spatial$Stroma, "Imaging-MegaClusters_area", height = 6, width = 10, pval = 0.05, par_mar = c(10, 30, 5, 1))
+compute.modules.relationship(df_entropy, data_spatial$Stroma, "Imaging-MegaClusters_entropy", height = 6, width = 10, pval = 0.05, par_mar = c(10, 30, 5, 1))
+compute.metada.association(data_spatial$Stroma, coldata[rownames(coldata)%in%rownames(data_spatial$Stroma),], pval = 0.05, width = 10, height = 10) 
+```
+

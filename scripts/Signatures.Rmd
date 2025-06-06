@@ -1,0 +1,152 @@
+---
+title: "Signatures"
+author: "Marcelo Hurtado"
+date: "2025-05-12"
+output: html_document
+---
+
+Load library
+```{r}
+library(multideconv)
+library(scBio)
+```
+
+Load object
+```{r}
+load("~/Downloads/Zilionis_scRNA/Metacells_Zilionis.RData")
+```
+
+BSeqSC markers
+```{r}
+markers = list(tDC1 = c("CLEC9A", "XCR1", "CADM1", "CLNK", "CPVL", "WDFY4", "DNASE1L3", "CPNE3", "CCSER1", "IDO1", "HDAC9", "S100B", "WDFY4", "C1orf54"),
+               tDC2 = c("CLEC10A", "CD1C", "FCER1A", "FCGR2B", "CD1E", "GPAT3", "AREG"),
+               tDC3 = c("LAMP3", "BIRC3", "CCR7", "MARCKS", "MARCKSL1", "FSCN1"),
+               tpDC = c("PACSIN1", "GZMB", "LILRA4", "IL3RA", "CLEC4C", "SPIB", "IRF7", "JCHAIN", "PTGDS", "IRF4", "C12orf75", "IGKC"))
+```
+
+Bulk data
+```{r}
+pseudobulk = create_sc_pseudobulk(metacells, cells_labels = "new_annotation", sample_labels = "Patient", normalized = T, file_name = "Zilionis")
+pseudobulk = read.csv("Results/Zilionis.csv", row.names = 1, sep = "\t")
+```
+
+Create signatures
+```{r}
+signatures = create_sc_signatures(metacells@assays$RNA@counts, 
+                                  metacells@meta.data, 
+                                  cells_labels = "new_annotation", 
+                                  credentials.mail = "marcelo.hurtado@inserm.fr",
+                                  credentials.token = "734212f6ad77fc4eea2bdb502792f294",
+                                  sample_labels = "Patient", 
+                                  bulk_rna = pseudobulk, 
+                                  cell_markers = markers, 
+                                  name_signature = "Zilionis")
+```
+
+Deconvolution pseudobulk
+```{r}
+deconv = compute.deconvolution(raw.counts = pseudobulk, 
+                               normalized = FALSE, 
+                               doParallel = TRUE,
+                               return = TRUE, 
+                               methods = c("Quantiseq", "Epidish", "DeconRNASeq", "DWLS", "CBSX"),
+                               workers = 4,
+                               file_name = "Zilionis_pseudobulk", 
+                               credentials.mail = "marcelo.hurtado@inserm.fr",
+                               credentials.token = "734212f6ad77fc4eea2bdb502792f294",
+                               sc_deconv = TRUE, 
+                               sc_matrix = metacells@assays$RNA@counts, 
+                               sc_metadata = metacells@meta.data, 
+                               cell_label = "new_annotation", 
+                               sample_label = "Patient", 
+                               name_sc_signature = "Zilionis")
+```
+
+Deconvolution scRNAseq
+```{r}
+deconv_sc = compute_sc_deconvolution_methods(raw_counts = pseudobulk, 
+                                             normalized = FALSE, 
+                                             methods_sc = c("Autogenes", "BayesPrism", "Bisque", "MuSic", "SCDC"),
+                                             sc_object = metacells@assays$RNA@counts, 
+                                             sc_metadata = metacells@meta.data, 
+                                             cell_annotations = "new_annotation", 
+                                             samples_ids = "Patient", 
+                                             name_object = "Zilionis", 
+                                             n_cores = 6, 
+                                             return = TRUE, 
+                                             file_name = "Zilionis_pseudobulk")
+```
+
+Join deconvolution results
+```{r}
+deconv = cbind(deconv, deconv_sc)
+```
+
+Benchmarking deconvolution
+
+Function to aggregate cell types per method-siganture
+```{r}
+aggregate_cell_types <- function(deconv_df, cell_types, new_name) {
+  # Identify relevant column names matching any cell type pattern
+  pattern <- paste(cell_types, collapse = "|")
+  matching_cols <- grep(pattern, colnames(deconv_df), value = TRUE)
+  
+  # Extract method_signature by removing the matched cell type from the column name
+  cell_type_pattern <- paste0("_(", paste(cell_types, collapse = "|"), ")$")
+  extract_prefix <- function(colname) {
+    sub(cell_type_pattern, "", colname)
+  }
+  
+  method_info <- data.frame(
+    colname = matching_cols,
+    method_signature = sapply(matching_cols, extract_prefix),
+    stringsAsFactors = FALSE
+  )
+  
+  # Aggregate per method_signature
+  aggregated_df <- data.frame(row.names = rownames(deconv_df))
+  
+  for (ms in unique(method_info$method_signature)) {
+    relevant_cols <- method_info$colname[method_info$method_signature == ms]
+    
+    if (length(relevant_cols) > 0) {
+      aggregated_df[[paste0(ms, "_", new_name)]] <- rowSums(deconv_df[, relevant_cols, drop = FALSE], na.rm = TRUE)
+    }
+  }
+  
+  return(aggregated_df)
+}
+```
+
+Aggregate cells in deconvolution to match scRNA annotation
+```{r}
+deconv <- deconv %>%
+   dplyr::bind_cols(aggregate_cell_types(deconv, c("CD8.cells", "CD4.cells", "CD4.memory.activated", "CD4.memory.resting", "CD4.naive",
+                                                  "T.cells.regulatory", "T.cells.non.regulatory", "T.cells.helper", "T.cells.gamma.delta"), "Tcells"),
+                   aggregate_cell_types(deconv, c("Macrophages.M0", "Macrophages.M1", "Macrophages.M2"), "Macrophages.cells"),
+                   aggregate_cell_types(deconv, c("B.naive.cells", "B.memory.cells"), "B.cells"),
+                   aggregate_cell_types(deconv, c("Dendritic.activated.cells", "Dendritic.resting.cells"), "Dendritic.cells"),
+                   aggregate_cell_types(deconv, c("NK.activated", "NK.resting"), "NK.cells")) %>%
+  dplyr::select(-Quantiseq_uncharacterized_cell)
+```
+
+Save deconvolution file
+```{r}
+write.csv(deconv, file = "Results/Deconvolution_Zilionis_pseudobulk.csv")
+```
+
+```{r}
+deconv = read.csv("Results/Deconvolution_Zilionis_pseudobulk.csv", row.names = 1)
+```
+
+Groundtruth
+```{r}
+tab <- table(metacells@meta.data$Patient, metacells@meta.data$new_annotation)
+cells_groundtruth <- as.data.frame.matrix(prop.table(tab, margin = 1))
+```
+
+Benchmark 
+```{r}
+corr_matrix = compute.benchmark(deconv, cells_groundtruth, corr_type = "spearman", plot = T, scatter = F, pval = 0.05, 
+                                cells_extra = c("tpDC", "tDC1", "tDC2", "tDC3", "Tcells"), file_name = "Benchmark_signatures", height = 10, width = 12)
+```

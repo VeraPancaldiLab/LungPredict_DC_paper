@@ -1,0 +1,153 @@
+---
+title: "Spatial_distance_analysis"
+output: html_document
+date: "2025-03-11"
+---
+
+Preprocessing spatial data
+```{r}
+library(readxl)
+library(dplyr)
+library(purrr)
+
+# Define the folder containing the xlsx files
+folder_path <- "~/Downloads/transfer_9300035_files_3f9769fb/Fichier_results_lung predict/"
+
+# Get all xlsx file names in the folder
+xlsx_files <- list.files(folder_path, pattern = "\\.xlsx$", full.names = TRUE)
+
+# Function to read sheet 2 from an xlsx file
+read_sheet_2 <- function(file) {
+  read_excel(file, sheet = 5) %>% 
+    mutate(SourceFile = basename(file))  # Add file name as identifier
+}
+
+# Read all tables and combine them
+combined_table <- map_dfr(xlsx_files, read_sheet_2)
+
+# Format table
+combined_table = combined_table %>%
+  dplyr::select(-SourceFile) 
+
+colnames(combined_table) = combined_table[1,]
+
+combined_table = combined_table %>%
+  dplyr::filter(`Slide ID` != "Slide ID") 
+```
+
+Processing of spatial data
+```{r}
+## Load clinical data
+traitData = read.csv("../examples/Data/Gobbini/Raw_files/clinical_data_clean.csv")
+## Extract patients with RNAseq
+patients = traitData %>%
+  filter(AN != "") %>%
+  pull(AN)
+
+data_spatial = list()
+i = 1
+for (x in unique(combined_table$`Tissue Category`)) {
+  data_spatial[[i]] = combined_table %>%
+    dplyr::filter(`Tissue Category` == x) %>% #Split by Tissue category (Stroma, Tumor, total)
+    dplyr::filter(stringr::str_detect(.data$`Slide ID`, paste(patients, collapse = "|"))) %>% #Match with patients with RNAseq
+    dplyr::mutate(PatientOrder = match(stringr::str_extract(.data$`Slide ID`, paste(patients, collapse = "|")), patients)) %>% #Extract the order of patients vector
+    dplyr::arrange(PatientOrder) %>% #Match df with the corresponding order
+    dplyr::select(-PatientOrder)# Remove temporary column
+  
+  names(data_spatial)[i] = x
+    
+  i = i + 1
+}
+
+# Subset to only patients with spatial data
+patients = patients[which(patients%in%stringr::str_extract(data_spatial[[1]]$`Slide ID`, paste(patients, collapse = "|")))]
+
+for (i in 1:length(data_spatial)) {
+  data_spatial[[i]] = data_spatial[[i]] %>%
+    dplyr::mutate(Samples = paste0("Patient_", stringr::str_extract(data_spatial[[i]]$`Slide ID`, paste(patients, collapse = "|"))),
+                  Features = paste0(.data$From, "_", .data$To)) %>%
+    dplyr::select(-`Slide ID`, -`Tissue Category`, -From, -To) 
+    #na.omit() 
+}
+```
+
+Load CellTFusion features
+```{r}
+load("Results_features_Gobbini.RData")
+deconv = read.csv("Results/Deconvolution_LP_Gobbini_spatial.csv", row.names = 1)
+```
+
+Gather features by sample and tissue
+```{r}
+features = list()
+for (tissue in 1:length(data_spatial)) {
+  x_list <- list()
+  for (i in 1:nrow(cell_groups[[1]])) {
+    x = data_spatial[[tissue]] %>%
+      dplyr::filter(Samples == rownames(cell_groups[[1]])[i]) %>%
+      tibble::column_to_rownames("Features") %>%
+      dplyr::select(-Min, -Max, -Median, -SD) #Take Mean value
+
+    colnames(x)[1] = x$Samples[1]
+    x$Samples = NULL
+    x_list[[i]] = x
+  }
+  features[[tissue]] = do.call(cbind, x_list)
+  names(features)[tissue] = names(data_spatial)[tissue]
+}
+
+all.equal(rownames(cell_groups[[1]]), colnames(features[[1]])) ## Verify there are the same patients before doing correlation
+```
+
+Metadata correlation
+```{r}
+source("src/environment_set.R") #Load functions and packages
+#distances = do.call(rbind, features)
+names_distances = rownames(features[[1]])
+distances = apply(features[[1]], 2, as.numeric)
+rownames(distances) = names_distances
+
+discard = c("pDC+_Pneumocyte+", "Tumor_cells+_Tumor_cells+", "Total Cells_Tumor_cells+", "Mature_DC+_Pneumocyte+", "Pneumocyte+_Pneumocyte+", "Pneumocyte+_Total Cells",
+            "cDC2+_Total Cells", "Total Cells_Total Cells", "Tumor_cells+_CD8+", "Total Cells_CD8+", "Tumor_cells+_cDC1+", "Total Cells_cDC1+", "pDC+_Total Cells",
+            "Pneumocyte+_CD8+", "Tumor_cells+_cDC2+", "Total Cells_cDC2+", "Pneumocyte+_pDC+", "cDC1+_Total Cells", "Pneumocyte+_cDC2+", "Tumor_cells+_pDC+",
+            "Total Cells_pDC+", "Tumor_cells+_Mature_DC+", "Total Cells_Mature_DC+", "CD8+_Pneumocyte+", "Total Cells_Pneumocyte+", "Tumor_cells+_Pneumocyte+",
+            "cDC2+_Pneumocyte+", "Pneumocyte+_Tumor_cells+", "cDC1+_Pneumocyte+", "Pneumocyte+_Mature_DC+", "Mature_DC+_Total Cells", "Tumor_cells+_Total Cells")
+distances = distances[!rownames(distances)%in%discard,]
+compute.modules.relationship(network[[1]], t(distances), "Cell_groups-Spatial_distance", height = 5, width = 15, pval = 0.05, par_mar = c(10, 30, 5, 1))
+#compute.modules.relationship(cell_groups[[1]], t(distances), "Cell_groups-Spatial_distance", height = 15, width = 25, pval = 0.05, par_mar = c(10, 30, 5, 1))
+```
+
+Correlation of features
+```{r}
+for (i in 1:length(features)) {
+  compute.modules.relationship(t(features[[i]]), cell_groups[[1]], paste0("Correlation_cell_groups_spatial_", names(features)[i]), vertical = T, height = 15, width = 30, pval = 0.05, par_mar = c(10, 30, 5, 1))
+}
+```
+
+Cell group composition
+```{r}
+## Reorder cell groups based on 
+cell.composition = compute.composition.matrix(deconv, dt, cell_groups, cells_extra = c("tpDC", "tDC1", "tDC2", "tDC3"))
+
+#Cell groups
+colors <- structure(c("white", "blue"), names = c("0", "1")) 
+
+ht2 = Heatmap(cell.composition, 
+        border = T, show_row_dend = F, name = "Cell presence",
+        column_gap = unit(8, "mm"), col = colors, row_names_side = "left",
+        column_dend_height = unit(5, "cm"), row_dend_width = unit(5, "cm"), 
+        cluster_rows = F,
+        column_dend_reorder = F, row_dend_reorder = F,
+        show_row_names = T, show_column_names = T,
+        show_heatmap_legend = T, 
+        row_names_gp = gpar(fontsize = 16), 
+        column_names_gp = gpar(fontsize =12), 
+        width = unit(20, "cm"), height = unit(25, "cm"),
+        heatmap_legend_param = list(labels_gp = gpar(fontsize = 20), legend_width = unit(15, "cm"), 
+                                    title_gp = gpar(fontsize = 20)))
+
+pdf("Results/Cell_groups_composition", width = 20, height = 15)
+draw(ht2, show_heatmap_legend = T, heatmap_legend_side = "bottom", annotation_legend_side = 'bottom')
+dev.off()
+```
+

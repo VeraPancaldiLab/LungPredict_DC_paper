@@ -1,0 +1,13 @@
+"0","      # Fit the Cox PH model with the combination of features (cox PH take into account covariates and measure the impact of each variable in the survival time)
+      cox <- rms::cph(formula, data = data_for_model)
+"
+"2","Registered S3 method overwritten by 'htmlwidgets':
+  method           from         
+  print.htmlwidget tools:rstudio
+"
+"2","Registered S3 method overwritten by 'data.table':
+  method           from
+  print.data.table     
+"
+"2","Error in Surv(time, status) : could not find function ""Surv""
+"

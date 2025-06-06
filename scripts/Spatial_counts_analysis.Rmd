@@ -1,0 +1,295 @@
+---
+title: "Spatial_analysis"
+output: html_document
+date: "2025-03-10"
+---
+
+Preprocessing spatial data
+```{r}
+library(readxl)
+library(dplyr)
+library(purrr)
+
+# Define the folder containing the xlsx files
+folder_path <- "~/Downloads/Spatial_Gobbini/Fichier_results_lung predict/"
+
+# Get all xlsx file names in the folder
+xlsx_files <- list.files(folder_path, pattern = "\\.xlsx$", full.names = TRUE)
+
+# Function to read sheet 2 from an xlsx file
+read_sheet_2 <- function(file) {
+  read_excel(file, sheet = 2) %>% 
+    mutate(SourceFile = basename(file))  # Add file name as identifier
+}
+
+# Read all tables and combine them
+combined_table <- map_dfr(xlsx_files, read_sheet_2)
+
+# Format table
+combined_table = combined_table %>%
+  dplyr::select(-SourceFile) 
+
+colnames(combined_table) = combined_table[1,]
+
+combined_table = combined_table %>%
+  dplyr::filter(`Slide ID` != "Slide ID") 
+```
+
+Processing of spatial data
+```{r}
+## Load clinical data
+traitData = read.csv("../../LungPredict2/Data/Gobbini/Raw_files/clinical_data_clean.csv")
+## Extract patients with RNAseq
+patients = traitData %>%
+  filter(AN_clean != "") %>%
+  pull(AN_clean)
+
+data_spatial = list()
+i = 1
+for (x in unique(combined_table$`Tissue Category`)) {
+  data_spatial[[i]] = combined_table %>%
+    dplyr::filter(`Tissue Category` == x) %>% #Split by Tissue category (Stroma, Tumor, total)
+    dplyr::filter(stringr::str_detect(.data$`Slide ID`, paste(patients, collapse = "|"))) %>% #Match with patients with RNAseq
+    dplyr::mutate(PatientOrder = match(stringr::str_extract(.data$`Slide ID`, paste(patients, collapse = "|")), patients)) %>% #Extract the order of patients vector
+    dplyr::arrange(PatientOrder) %>% #Match df with the corresponding order
+    dplyr::select(-PatientOrder)# Remove temporary column
+  
+  names(data_spatial)[i] = x
+    
+  i = i + 1
+}
+
+# Subset to only patients with spatial data
+patients = patients[which(patients%in%stringr::str_extract(data_spatial[[1]]$`Slide ID`, paste(patients, collapse = "|")))]
+
+for (i in 1:length(data_spatial)) {
+  data_spatial[[i]] = data_spatial[[i]] %>%
+    dplyr::mutate(Samples = patients) %>%
+    tibble::column_to_rownames("Samples") %>%
+    dplyr::select(-`Slide ID`, -`Tissue Category`)
+}
+
+# Generate proportions of cells
+for (i in 1:length(data_spatial)) {
+  for(j in 1:nrow(data_spatial[[i]])){
+    data_spatial[[i]][j,] = as.numeric(data_spatial[[i]][j,])/as.numeric(data_spatial[[i]]$`Total Cells`[j])
+  }
+  
+  data_spatial[[i]] = data_spatial[[i]] %>%
+    dplyr::select(-`Total Cells`)
+}
+```
+
+Save spatial data
+```{r}
+save(data_spatial, file = "../input/Spatial_densities.RData")
+```
+
+Processed based on RNAseq data
+```{r}
+#Load RNAseq data
+counts = read.csv("../LungPredict2/Data/Gobbini/Raw_files/counts_raw.csv", row.names = 1) 
+traitData = traitData[traitData$N_Raw_matrice_Bulk %in% colnames(counts),] # Filter for patients with RNAseq
+counts = counts[,traitData$N_Raw_matrice_Bulk] #Order samples on counts based on clinical data
+all.equal(traitData$N_Raw_matrice_Bulk, colnames(counts)) #Verify samples from counts are in the correct order
+
+traitData = traitData %>%
+  dplyr::filter(stringr::str_detect(.data$AN, paste(patients, collapse = "|"))) %>% # Filter for patients with spatial data
+  tibble::column_to_rownames("AN") %>%
+  dplyr::select(N_Raw_matrice_Bulk, KRAS, BRAF, MET, PFS, PFS_event, R.NR, Age_diag, Gender, Tabac, Centre)
+
+counts = counts[,colnames(counts)%in%traitData$N_Raw_matrice_Bulk] #Subset RNAseq based on available spatial information
+all.equal(colnames(counts), traitData$N_Raw_matrice_Bulk) #Verify they still are in the same order
+colnames(counts) = rownames(traitData)
+traitData = traitData %>%
+  dplyr::select(-N_Raw_matrice_Bulk)
+
+## Filter spatial data
+for (i in 1:length(data_spatial)) {
+  data_spatial[[i]] = data_spatial[[i]][rownames(traitData),]
+}
+```
+
+Normalize counts
+```{r}
+counts.norm = ADImpute::NormalizeTPM(counts, log = F)
+```
+
+Create matrix of features
+```{r}
+### Add identifier Patient to avoid joining other characters
+rownames(traitData) = paste0("Patient_", rownames(traitData))
+colnames(counts.norm) = paste0("Patient_", colnames(counts.norm))
+for (i in 1:length(data_spatial)) {
+  rownames(data_spatial[[i]]) = paste0("Patient_", rownames(data_spatial[[i]]))
+}
+
+spatial_features = apply(do.call(cbind, data_spatial), 2, as.numeric)
+traitData = cbind(traitData, spatial_features)
+rownames(spatial_features) = rownames(traitData)
+```
+
+###### From 112 patients with clinical data, only 62 have spatial data
+###### From 68 patients with spatial data in each stroma, tumor, total only 62 have clinical info
+###### From 62 patients with spatial data only 54 have RNAseq
+###### From 116 patients with RNAseq, all of them has clinical info (incomplete for some traits but present in clinical file) 
+
+```{r}
+source("src/environment_set.R") #Load functions and packages
+```
+
+Compare correlation with DC markers and spatial proportions
+```{r}
+markers = c("XCR1", "CLEC9A", "BATF3", "IRF8", "FCER1A", "CD1C", "IRF4", "CLEC4C", "FSCN1", "CCR7", "LY75", "CCL22", "CD40", "BIRC3", "NFKB2", "IL12B",
+            "CLEC10A", "LAMP3", "CD8A")
+markers_expression = counts.norm[rownames(counts.norm)%in%markers,]
+markers_expression = log2(markers_expression+1)
+
+deconv = deconv[,grep("DWLS", colnames(deconv))]
+colnames(deconv) = stringr::str_replace(colnames(deconv), "CBSX.NSCLC.Zilionis.scRNAseq", "Zilionis")
+deconv = deconv[,-grep("tpDC", colnames(deconv))]
+compute.modules.relationship(deconv[,grep(paste0(c("tpDC", "tDC1", "tDC2", "tDC3"), collapse = "|"), colnames(deconv)), drop = F], t(markers_expression), "Markers-spatial", width = 15, height = 4, par_mar = c(5, 35, 5, 3))
+
+compute.modules.relationship(spatial_features[,grep("Total", colnames(spatial_features)), drop = F], t(markers_expression), "Markers-spatial", width = 12, height = 8)
+
+## Markers DC1 = c("XCR1", "CLEC9A", "BATF3")
+scatter_plots(t(counts.norm[rownames(counts.norm)%in%c("XCR1", "CLEC9A", "BATF3"), ,drop = F]), spatial_features[,"Tumor.cDC1+", drop = F], "pearson", y_up = 0.004)
+
+## Markers DC2 = c("FCER1A", "CD1C")
+scatter_plots(t(counts.norm[rownames(counts.norm)%in%c("FCER1A", "CD1C"), ,drop = F]), spatial_features[,"Tumor.cDC2+", drop = F], "pearson", y_up = 0.02)
+
+## Markers DC3 = c("FSCN1", "CCR7", "LY75", "CCL22", "CD40", "BIRC3", "NFKB2")
+scatter_plots(t(counts.norm[rownames(counts.norm)%in%c("FSCN1", "CCR7", "LY75", "CCL22", "CD40", "BIRC3", "NFKB2"), ,drop = F]), spatial_features[,"Tumor.Mature_DC+", drop = F], "pearson", y_up = 0.005)
+```
+
+Analysis is done with 54 patients (RNAseq + spatial + clinical information)
+
+CellTFusion
+
+Compute deconvolution
+```{r}
+# deconv = compute.deconvolution(counts.norm, normalized = F, doParallel = T, workers = 2, file_name = "LP_Gobbini_spatial",
+#                                credentials.mail = "marcelo.hurtado@inserm.fr", credentials.token = "734212f6ad77fc4eea2bdb502792f294")
+deconv = read.csv("Results/Deconvolution_LP_Gobbini_spatial.csv", row.names = 1)
+# rownames(deconv) = stringr::str_remove(rownames(deconv), "X")
+# rownames(deconv) = paste0("Patient_", rownames(deconv))
+```
+
+Compute BayesPrism
+```{r}
+load("Metacells.RData")
+deconvolution.results.bayesprism <- omnideconv::deconvolute_bayesprism(bulk_gene_expression = counts.norm,
+                                           single_cell_object = counts_all,
+                                           cell_type_annotations = metadata_all$general,
+                                           cell_subtype_labels = metadata_all$new_annotation,
+                                           n_cores=8)
+
+deconv = deconvolution.results.bayesprism$bp.res@posterior.initial.cellState@theta
+
+library(dplyr)
+deconv <- deconv %>%
+  data.frame() %>%
+  dplyr::rename("B.memory" = "B.cells.memory",
+                "B.naive" = "B.cells.naive",
+                "CD8.cells" = "T.cells.CD8",
+                "CD4.naive" = "T.cells.CD4.naive",
+                "CD4.memory.activated" = "T.cells.CD4.memory.activated",
+                "CD4.memory.resting" = "T.cells.CD4.memory.resting",
+                "Mast.activated" = "Mast.cells.activated",
+                "Mast.resting" = "Mast.cells.resting",
+                "Macrophages.M0" = "Macrophages.M0",
+                "Macrophages.M2" = "Macrophages.M2",
+                "Plasma" = "Plasma.cells",
+                "T.cells.helper" = "T.cells.follicular.helper",
+                "T.cells.regulatory" = "T.cells.regulatory..Tregs.",
+                "NK.resting" = "NK.cells.resting")
+
+colnames(deconv) = paste0("BayesPrism_Zilionis_", colnames(deconv))
+```
+
+```{r}
+dendritic_deconv = deconv[,grep(paste0(c("DC1", "DC2", "DC3", "DC4", "DC5"), collapse = "|"), colnames(deconv))]
+rownames(spatial_features) = rownames(dendritic_deconv)
+
+scatter_plots(dendritic_deconv, spatial_features[,"Tumor.Mature_DC+"], method = "pearson", x_down = 0.5, y_up = 0.01)
+compute.modules.relationship(dendritic_deconv, spatial_features, "DC-Spatial_abundance", height = 15, width = 20, pval = 0.05, par_mar = c(10, 30, 5, 1))
+```
+
+Dictionary deconvolution
+```{r}
+# Deconvolution dictionary
+pathways = compute.pathway.activity(counts.norm)
+dict = deconvolution_dictionary(deconv, pathways)
+deconv = dict[[1]]
+clusters = dict[[2]]
+```
+
+TF activity
+```{r}
+tfs = compute.TFs.activity(counts.norm)
+```
+
+TF network
+```{r}
+network = compute.WTCNA(tfs, corr_mod = 0.7, clustering.method = "ward.D2", return = T) 
+```
+
+Metadata association 
+```{r}
+coldata = traitData %>%
+  dplyr::select(-Centre, -PFS, -KRAS, -BRAF, -MET, -PFS_event, -Age_diag, -Gender, -Tabac)
+
+compute.metada.association(network[[1]], coldata, pval = 0.05, width = 14, height = 8) 
+```
+
+Pathways activity inference
+```{r}
+pathways = compute.pathway.activity(counts.norm)
+#Association of TFs modules with pathways
+compute.modules.relationship(network[[1]], pathways, "Pathways_Progeny-TFs_Modules", width = 10)
+```
+
+Benchmarking deconvolution and spatial
+```{r}
+source("src/pseudobulk_function.R")
+
+for(i in 1:length(data_spatial)){
+  #Rename spatial features
+  spatial_features <- data_spatial[[i]] %>%
+    dplyr::rename("CD8.cells" = "CD8+",
+                  "Cancer" = "Tumor_cells+",
+                  "tDC1" = "cDC1+",
+                  "tDC2" = "cDC2+",
+                  "tpDC" = "pDC+",
+                  "tDC3" = "Mature_DC+") %>%
+    dplyr::mutate(across(everything(), as.numeric)) %>%
+    dplyr::mutate(Dendritic.cells = rowSums(across(c(tpDC, tDC1, tDC2, tDC3))))
+  
+  #Correlation plot deconvolution vs groundtruth
+  corr_matrix = benchmarking_deconvolution(deconv, spatial_features, include_combinations = "BayesPrism_Zilionis", corr_type = "spearman", scatter = T, pval = 0.05, paste0("Gobbini_spatial_", names(data_spatial)[i]), width = 14, height = 8)  
+}
+```
+
+Deconvolution analysis
+```{r}
+dt = compute.deconvolution.analysis(deconv, corr = 0.7, seed = 123, cells_extra = c("tpDC", "tDC1", "tDC2", "tDC3"), low_variance = F) 
+#Association of TFs modules with deconvolution 
+compute.modules.relationship(network[[1]], dt[[1]], "Deconvolution-TFs_Modules", vertical = T, height = 30, width = 10, pval = 0.05, par_mar = c(3, 30, 5, 1))
+```
+
+Cell groups identification
+```{r}
+cell_groups = construct_cell_groups(counts.norm, tfs, deconv, network, dt, traitData, trait = "R.NR", positive = "R")
+```
+
+Module correlation
+```{r}
+rownames(spatial_features) = rownames(traitData)
+compute.modules.relationship(cell_groups[[1]], spatial_features, "Cell_groups-Spatial_abundance", height = 15, width = 20, pval = 0.05, par_mar = c(10, 30, 5, 1))
+compute.modules.relationship(network[[1]], spatial_features, "Network-Spatial_abundance", height = 5, width = 15, pval = 0.05, par_mar = c(10, 30, 5, 1))
+```
+
+Save CellTFusion results
+```{r}
+save(cell_groups, tfs, network, pathways, dt, file = "Results_features_Gobbini.RData")
+```

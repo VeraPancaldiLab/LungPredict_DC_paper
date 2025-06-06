@@ -1,0 +1,124 @@
+---
+title: "Bulk_analysis"
+author: "Marcelo Hurtado"
+date: "2025-05-16"
+output: html_document
+---
+
+Load libraries
+```{r}
+library(multideconv)
+```
+
+Input files
+```{r}
+counts = read.csv("../LungPredict2/Data/Gobbini/Raw_files/counts_raw.csv", row.names = 1) 
+```
+
+Load single cell object
+```{r}
+load("~/Downloads/Zilionis_scRNA/Metacells_Zilionis.RData")
+```
+
+Deconvolution
+```{r}
+deconv = compute.deconvolution(raw.counts = counts, 
+                               normalized = TRUE, 
+                               doParallel = TRUE,
+                               return = TRUE, 
+                               methods = c("Quantiseq", "Epidish", "DeconRNASeq", "DWLS", "CBSX"),
+                               workers = 6,
+                               file_name = "Gobbini", 
+                               credentials.mail = "marcelo.hurtado@inserm.fr",
+                               credentials.token = "734212f6ad77fc4eea2bdb502792f294",
+                               sc_deconv = TRUE, 
+                               sc_matrix = metacells@assays$RNA@counts, 
+                               sc_metadata = metacells@meta.data, 
+                               methods_sc = c("Autogenes", "BayesPrism", "Bisque", "MuSic", "SCDC"),
+                               cell_label = "new_annotation", 
+                               sample_label = "Patient", 
+                               name_sc_signature = "Zilionis")
+```
+
+Load deconvolution
+```{r}
+deconv = read.csv("Results/Deconvolution_Gobbini.csv", row.names = 1)
+```
+
+Load spatial data
+```{r}
+load("Results/Spatial_features.RData")
+```
+
+Map IDs
+```{r}
+traitData = read.csv("../LungPredict2/Data/Gobbini/Raw_files/clinical_data_clean.csv")
+traitData = traitData %>%
+  dplyr::filter(N_Raw_matrice_Bulk %in% rownames(deconv)) 
+traitData <- traitData[match(rownames(deconv), traitData$N_Raw_matrice_Bulk), ]
+all.equal(rownames(deconv), traitData$N_Raw_matrice_Bulk)
+
+deconv = deconv %>%
+  dplyr::as_tibble() %>%
+  dplyr::mutate(Samples = paste0("Patient_", traitData$AN)) %>%
+  dplyr::filter(Samples %in% rownames(data_spatial$Stroma)) %>%
+  tibble::column_to_rownames("Samples")
+all.equal(rownames(deconv), rownames(data_spatial$Stroma))
+```
+
+Benchmarking deconvolution and spatial
+```{r}
+for(i in 1:length(data_spatial)){
+  #Rename spatial features
+  spatial_features <- data_spatial[[i]] %>%
+    dplyr::rename("CD8.cells" = "CD8+",
+                  "Cancer" = "Tumor_cells+",
+                  "tDC1" = "cDC1+",
+                  "tDC2" = "cDC2+",
+                  "tpDC" = "pDC+",
+                  "tDC3" = "Mature_DC+") %>%
+    dplyr::mutate(across(everything(), as.numeric)) %>%
+    dplyr::mutate(Dendritic.cells = rowSums(across(c(tpDC, tDC1, tDC2, tDC3))))
+  
+  x = deconv[,grep("tpDC", colnames(deconv))]
+  y = spatial_features[,grep("tpDC", colnames(spatial_features)), drop = FALSE]
+  pdf(paste0("Scatter_plots_", colnames(y), "_", paste0("Gobbini_spatial_", names(data_spatial)[i])))
+  scatter_plots(x, y, "spearman")
+  dev.off()
+
+  #Correlation plot deconvolution vs groundtruth
+  corr_matrix = compute.benchmark(deconv, spatial_features, corr_type = "spearman", plot = T, scatter = F, pval = 0.05, 
+                                cells_extra = c("tpDC", "tDC1", "tDC2", "tDC3", "Tcells", "uncharacterized_cell"), 
+                                file_name = paste0("Gobbini_spatial_", names(data_spatial)[i]), height = 10, width = 8)
+}
+```
+
+Correlation plot
+```{r}
+library(ggplot2)
+library(ggpubr)
+#####Scatter plot function
+scatter_plots = function(deconv, ground, method){
+  for (i in 1:ncol(deconv)) {
+    data = cbind(deconv[,i], ground)
+    colnames(data) = c("x", "y")
+    p <- ggplot(data, aes(x = x, y = y)) +
+      geom_point(color = "blue", size = 3, alpha = 0.7) +  # Customize the points
+      geom_smooth(method = "lm", se = T, color = "red") +  # Add regression line
+      theme_minimal() +  # Apply a minimal theme
+      labs(
+        #title = paste0("Linear correlation - ", colnames(ground)),  # Set the title
+        x = colnames(deconv)[i],                 # Set the x-axis label
+        y = colnames(ground)                # Set the y-axis label
+      ) +
+      theme(
+        plot.title = element_text(size = 20, hjust = 0.5),  # Adjust title font size and position
+        axis.title = element_text(size = 15)                # Adjust axis label font size
+      ) +
+      stat_cor(method = method,label.x = summary(data[,1])[[5]]-0.02, label.y = summary(data[,2])[[5]]+0.005)  # Add correlation coefficient
+    
+    print(p)
+  }
+}
+```
+

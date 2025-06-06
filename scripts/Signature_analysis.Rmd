@@ -1,0 +1,36 @@
+---
+title: "Signature_analysis"
+output: html_document
+date: "2025-03-12"
+---
+
+```{r}
+signature = read.delim2("src/signatures/CBSX-NSCLC-Zilionis-scRNAseq.txt", row.names = 1)
+```
+
+Markers
+```{r}
+genes = rownames(signature)
+signature = apply(signature, 2, as.numeric)
+rownames(signature) = genes
+markers = c("XCR1", "CLEC9A", "BATF3", "IRF8", "FCER1A", "CD1C", "IRF4", "CLEC4C", "FSCN1", "CCR7", "LY75", "CCL22", "CD40", "BIRC3", "NFKB2", "IL12B")
+pheatmap::pheatmap(scale(t(signature[rownames(signature)%in%markers,])),
+                   main = "Markers expression")
+```
+
+Verify if markers corresponds to abundance
+```{r}
+deconv = read.csv("Results/Deconvolution_LP_Gobbini_spatial.csv", row.names = 1)
+```
+
+Scatter plot
+```{r}
+DC_type = deconv[, grep("DC2+", colnames(deconv))]
+scatter_plots(DC_type, t(log2(counts.norm["XCR1",,drop = F]+1)), "pearson", y_up = 1)
+```
+Compute module correlation
+```{r}
+DC_type = deconv[, grep(paste0(c("tpDC", "tDC1","tDC2","tDC3"), collapse = "|"), colnames(deconv))]
+compute.modules.relationship(DC_type, t(log2(markers_expression+1)), "Markers-deconvolution", width = 15, height = 8, par_mar = c(3, 28, 5, 3))
+```
+

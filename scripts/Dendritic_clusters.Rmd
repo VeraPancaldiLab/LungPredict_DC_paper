@@ -1,0 +1,341 @@
+---
+title: "Dendritic_clusters"
+author: "Marcelo Hurtado"
+date: "2025-03-21"
+output: html_document
+---
+
+Load libraries
+```{r}
+library(Seurat)
+library(dplyr)
+```
+
+Load Mtx data
+```{r}
+x = ReadMtx("~/Downloads/Zilionis_scRNA/GSE127465_human_counts_normalized_54773x41861.mtx.gz", cells = "~/Downloads/Zilionis_scRNA/GSE127465_human_cell_metadata_54773x25.tsv/human_cell_metadata_54773x25.tsv", features = "~/Downloads/Zilionis_scRNA/GSE127465_gene_names_human_41861.tsv.gz", cell.column = 5, feature.column = 1, mtx.transpose = T, skip.cell = 1)
+metada = read.csv("~/Downloads/Zilionis_scRNA/GSE127465_human_cell_metadata_54773x25.tsv/human_cell_metadata_54773x25.tsv", sep = "\t")
+seurat_object <- CreateSeuratObject(counts = x)
+seurat_object@meta.data = cbind(seurat_object@meta.data, metada) %>%
+  dplyr::select(-Barcode)
+rm(x, metada)
+gc()
+```
+
+scRNAseq processing
+```{r}
+seurat_object <- ScaleData(seurat_object)
+seurat_object <- FindVariableFeatures(object = seurat_object)
+seurat_object <- RunPCA(seurat_object, features = VariableFeatures(object = seurat_object))
+ElbowPlot(seurat_object) #determine dimensionality of data
+seurat_object = FindNeighbors(seurat_object, dims = 1:20)
+seurat_object = FindClusters(seurat_object, resolution = 1)
+seurat_object <- RunUMAP(seurat_object, dims = 1:10)
+```
+
+Regroup cells in more general clusters
+```{r}
+seurat_object@meta.data$general = as.character(seurat_object@meta.data$Most.likely.LM22.cell.type)
+
+macrophages = rownames(seurat_object@meta.data)[which(seurat_object@meta.data$general %in% c("Macrophages M0", "Macrophages M1", "Macrophages M2"))]
+Bcells = rownames(seurat_object@meta.data)[which(seurat_object@meta.data$general %in% c("B cells memory", "B cells naive"))]
+dendritic_cells = rownames(seurat_object@meta.data)[which(seurat_object@meta.data$general %in% c("Dendritic cells activated", "Dendritic cells resting"))]
+mast = rownames(seurat_object@meta.data)[which(seurat_object@meta.data$general %in% c("Mast cells activated", "Mast cells resting"))]
+nk = rownames(seurat_object@meta.data)[which(seurat_object@meta.data$general %in% c("NK cells activated", "NK cells resting"))]
+cd4 = rownames(seurat_object@meta.data)[which(seurat_object@meta.data$general %in% c("T cells CD4 memory activated", "T cells CD4 memory resting", "T cells CD4 naive",
+                                                                                            "T cells follicular helper", "T cells regulatory (Tregs)", "T cells CD8"))]
+seurat_object@meta.data$general[which(rownames(seurat_object@meta.data) %in% macrophages)] = "Macrophages"
+seurat_object@meta.data$general[which(rownames(seurat_object@meta.data) %in% Bcells)] = "B cells"
+seurat_object@meta.data$general[which(rownames(seurat_object@meta.data) %in% dendritic_cells)] = "Dendritic cells"
+seurat_object@meta.data$general[which(rownames(seurat_object@meta.data) %in% mast)] = "Mast cells"
+seurat_object@meta.data$general[which(rownames(seurat_object@meta.data) %in% nk)] = "NK cells"
+seurat_object@meta.data$general[which(rownames(seurat_object@meta.data) %in% cd4)] = "T cells"
+
+seurat_object@meta.data$general = as.factor(seurat_object@meta.data$general)
+Idents(seurat_object) = seurat_object@meta.data$general
+DimPlot(seurat_object, reduction="umap", label = T, pt.size = 0.5)
+```
+
+Subset dendritic cells
+```{r}
+Idents(seurat_object) = seurat_object@meta.data$general
+dendritic = subset(seurat_object, idents = "Dendritic cells", invert = FALSE)
+DimPlot(dendritic, reduction = "umap")
+
+dendritic = FindVariableFeatures(dendritic)
+dendritic <- ScaleData(dendritic)
+dendritic <- RunPCA(dendritic)
+ElbowPlot(dendritic) #determine dimensionality of data
+dendritic = FindNeighbors(dendritic, dims = 1:20)
+dendritic = FindClusters(dendritic, resolution = 0.1)
+dendritic <- RunUMAP(dendritic, dims = 1:20)
+
+DimPlot(dendritic, reduction="umap", label = T)
+
+markers = c("XCR1", "CLEC9A", "BATF3", "IRF8", "FCER1A", "CD1C", "IRF4", "CLEC4C", "FSCN1", "CCR7", "LY75", "CCL22", "CD40", "BIRC3", "NFKB2", "IL12B")
+VlnPlot(dendritic, features = markers, log = T, ncol = 4, slot = "counts")
+```
+
+Differential markers
+```{r}
+markers <- FindAllMarkers(dendritic, only.pos = TRUE)
+
+markers %>%
+    group_by(cluster) %>%
+    dplyr::filter(avg_log2FC > 1) %>%
+    slice_head(n = 10) %>%
+    ungroup() -> top10
+
+DoHeatmap(dendritic, features = top10$gene) + NoLegend()
+```
+
+Pathways activity
+```{r}
+net <- decoupleR::get_progeny(organism = 'human', top = 500)
+# Extract the normalized log-transformed counts
+mat <- as.matrix(dendritic@assays$RNA@data)
+
+# Run mlm
+acts <- decoupleR::run_mlm(mat = mat, 
+                           net = net, 
+                           .source = 'source', 
+                           .target = 'target',
+                           .mor = 'weight', 
+                           minsize = 5)
+
+# Extract mlm and store it in pathwaysmlm in data
+dendritic[['pathwaysmlm']] <- acts %>%
+                         tidyr::pivot_wider(id_cols = 'source', 
+                                            names_from = 'condition',
+                                            values_from = 'score') %>%
+                         tibble::column_to_rownames(var = 'source') %>%
+                         Seurat::CreateAssayObject(.)
+
+# Change assay
+Seurat::DefaultAssay(object = dendritic) <- "pathwaysmlm"
+
+# Scale the data
+dendritic <- Seurat::ScaleData(dendritic)
+dendritic@assays$pathwaysmlm@data <- dendritic@assays$pathwaysmlm@scale.data
+```
+
+Visualize pathway enrichment
+```{r}
+p1 <- Seurat::DimPlot(dendritic, 
+                      reduction = "umap", 
+                      label = TRUE, 
+                      pt.size = 0.5) + 
+      Seurat::NoLegend() + 
+      ggplot2::ggtitle('Cell types')
+
+colors <- rev(RColorBrewer::brewer.pal(n = 11, name = "RdBu")[c(2, 10)])
+
+p2 <- Seurat::FeaturePlot(dendritic, features = c("TGFb")) + 
+      ggplot2::scale_colour_gradient2(low = colors[1], mid = 'white', high = colors[2]) +
+      ggplot2::ggtitle('TGFb activity')
+
+p <- p1 | p2
+p
+```
+
+Exploration
+```{r}
+# Extract activities from object as a long dataframe
+df <- t(as.matrix(dendritic@assays$pathwaysmlm@data)) %>%
+      as.data.frame() %>%
+      dplyr::mutate(cluster = Seurat::Idents(dendritic)) %>%
+      tidyr::pivot_longer(cols = -cluster, 
+                          names_to = "source", 
+                          values_to = "score") %>%
+      dplyr::group_by(cluster, source) %>%
+      dplyr::summarise(mean = mean(score))
+
+# Transform to wide matrix
+top_acts_mat <- df %>%
+                tidyr::pivot_wider(id_cols = 'cluster', 
+                                   names_from = 'source',
+                                   values_from = 'mean') %>%
+                tibble::column_to_rownames(var = 'cluster') %>%
+                as.matrix()
+
+# Color scale
+colors <- rev(RColorBrewer::brewer.pal(n = 11, name = "RdBu"))
+colors.use <- grDevices::colorRampPalette(colors = colors)(100)
+
+my_breaks <- c(seq(-1.25, 0, length.out = ceiling(100 / 2) + 1),
+               seq(0.05, 1.25, length.out = floor(100 / 2)))
+
+# Plot
+pheatmap::pheatmap(mat = top_acts_mat,
+                   color = colors.use,
+                   border_color = "white",
+                   breaks = my_breaks,
+                   cellwidth = 20,
+                   cellheight = 20,
+                   treeheight_row = 20,
+                   treeheight_col = 20) 
+```
+
+Assign DC clusters
+```{r}
+new.cluster.ids <- c("DC1", "DC2", "DC3", "DC4", "DC5")
+names(new.cluster.ids) <- levels(dendritic)
+dendritic <- RenameIdents(dendritic, new.cluster.ids)
+dendritic@meta.data$DCclusters = as.character(Idents(dendritic))
+DimPlot(dendritic, reduction = "umap", label = TRUE, pt.size = 1) 
+```
+
+Rename clusters in original Seurat object
+```{r}
+seurat_object@meta.data$new_annotation = as.character(seurat_object@meta.data$Most.likely.LM22.cell.type)
+
+##Dendritic (tpDC)
+DC1 = rownames(dendritic@meta.data)[which(dendritic@meta.data$DCclusters == "DC1")]
+DC2 = rownames(dendritic@meta.data)[which(dendritic@meta.data$DCclusters == "DC2")]
+DC3 = rownames(dendritic@meta.data)[which(dendritic@meta.data$DCclusters == "DC3")]
+DC4 = rownames(dendritic@meta.data)[which(dendritic@meta.data$DCclusters == "DC4")]
+DC5 = rownames(dendritic@meta.data)[which(dendritic@meta.data$DCclusters == "DC5")]
+
+seurat_object@meta.data$new_annotation[which(rownames(seurat_object@meta.data) %in% DC1)] = "DC1"
+seurat_object@meta.data$new_annotation[which(rownames(seurat_object@meta.data) %in% DC2)] = "DC2"
+seurat_object@meta.data$new_annotation[which(rownames(seurat_object@meta.data) %in% DC3)] = "DC3"
+seurat_object@meta.data$new_annotation[which(rownames(seurat_object@meta.data) %in% DC4)] = "DC4"
+seurat_object@meta.data$new_annotation[which(rownames(seurat_object@meta.data) %in% DC5)] = "DC5"
+
+seurat_object@meta.data$new_annotation = as.factor(seurat_object@meta.data$new_annotation)
+Idents(seurat_object) = seurat_object@meta.data$new_annotation
+DimPlot(seurat_object, reduction="umap", label = T, pt.size = 1)
+```
+
+Differential markers
+```{r}
+markers <- FindAllMarkers(seurat_object, only.pos = TRUE)
+
+markers %>%
+    group_by(cluster) %>%
+    dplyr::filter(avg_log2FC > 1) %>%
+    slice_head(n = 10) %>%
+    ungroup() -> top10
+
+DoHeatmap(seurat_object, features = top10$gene) + NoLegend()
+```
+
+Metacells: Setup object
+```{r}
+library(hdWGCNA)
+
+data <- SetupForWGCNA(
+  seurat_object,
+  gene_select = "fraction", # the gene selection approach
+  fraction = 0.05, # fraction of cells that a gene needs to be expressed in order to be included
+  wgcna_name = "MetaCells" # the name of the hdWGCNA experiment
+)
+
+rm(seurat_object)
+gc()
+```
+
+
+Parallelize
+```{r}
+library(future)
+Idents(data) = data@meta.data$new_annotation
+subset_data = list()
+contador = 1
+cells_labels = unique(data@meta.data$new_annotation)
+cells = cells_labels[!cells_labels %in% c("DC1", "DC2", "DC3", "DC4", "DC5")]
+for (cell_type in cells) {
+  for (patient in unique(data@meta.data$Patient)) {
+    x = subset(x = data, subset = Patient == patient, idents = cell_type, return.null = T)
+    if(is.null(x) == F){
+      subset_data[[contador]] <- x
+      contador = contador + 1
+    }
+  }
+}
+
+# Function to process each group
+process_group <- function(data) {
+  
+  if (ncol(data) < 100) {
+    message("Skipping group: Less than 50 cells in this subset")
+    return(NULL) # Return NULL for groups with insufficient cells
+  }
+  
+  #Create Metacells by Groups celltype_patient
+  seurat_obj = MetacellsByGroups(seurat_obj = data,
+                    min_cells = 50,
+                    group.by = c("new_annotation", "Patient"),
+                    reduction = 'pca',
+                    k = 15,
+                    max_shared = 15,
+                    ident.group = 'new_annotation')
+  
+  meta = GetMetacellObject(seurat_obj)
+  list(counts = as.matrix(meta@assays[["RNA"]]@counts), metadata = meta@meta.data)
+  
+}
+
+# Set up parallelization using the future package
+plan(multicore, workers = 4) # Adjust the number of workers based on your system
+# Run the function in parallel
+results <- future.apply::future_lapply(subset_data, process_group)
+results <- results[!sapply(results, is.null)]
+reference = data@meta.data[,c("general", "new_annotation")]
+
+rm(data, subset_data)
+gc()
+
+# Combine results into a single Seurat object (if needed)
+counts_sc = do.call(cbind, lapply(results, '[[', 1))
+metadata = do.call(rbind, lapply(results, '[[', 2))
+
+rm(results)
+gc()
+```
+
+Bind metacells and cells
+```{r}
+DC_meta = dendritic@meta.data %>%
+  dplyr::mutate(cells_merged = NA,
+                new_annotation = .data$DCclusters) %>%
+  dplyr::select(orig.ident, nCount_RNA, nFeature_RNA, cells_merged, new_annotation, Patient) 
+
+metadata_all = rbind(metadata, DC_meta)
+counts_all = cbind(counts_sc, as.matrix(dendritic@assays$RNA@counts))
+rm(counts_sc, DC_meta, dendritic, metadata, x)
+gc()
+```
+
+Add general cell type clusters
+```{r}
+reference <- reference %>%
+  dplyr::distinct(new_annotation, .keep_all = TRUE)
+
+metadata_all <- metadata_all %>%
+  dplyr::left_join(reference %>% dplyr::select(new_annotation, general), 
+                   by = "new_annotation")
+```
+
+UMAP metacells
+```{r}
+library(hdWGCNA)
+metacell_obj = CreateSeuratObject(counts_all, meta.data = metadata_all)
+metacell_obj <- ScaleData(metacell_obj)
+metacell_obj <- FindVariableFeatures(object = metacell_obj)
+metacell_obj <- RunPCA(metacell_obj, features = VariableFeatures(object = metacell_obj))
+ElbowPlot(metacell_obj) #determine dimensionality of data
+metacell_obj = FindNeighbors(metacell_obj, dims = 1:20)
+metacell_obj = FindClusters(metacell_obj, resolution = 1)
+metacell_obj <- RunUMAP(metacell_obj, dims = 1:20)
+
+DimPlot(metacell_obj, reduction="umap", label = T, group.by = "new_annotation")
+Idents(metacell_obj) = metacell_obj@meta.data$new_annotation
+```
+
+Create signature
+```{r}
+omnideconv::set_cibersortx_credentials("marcelo.hurtado@inserm.fr", "734212f6ad77fc4eea2bdb502792f294")
+model_cbsx = omnideconv::build_model(as.matrix(counts_all), as.character(metadata_all$new_annotation),
+                                     batch_ids =as.character(metadata_all$Patient), method = "cibersortx")
+```
