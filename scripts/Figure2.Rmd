@@ -14,8 +14,8 @@ library(tidyr)
 
 Load data
 ```{r}
-mega_clusters = read.csv("~/Downloads/Spatial_Gobbini/Table_mega_cluster_mm2.csv")
-entropy_clusters = read.csv("~/Downloads/Spatial_Gobbini/table_entropy_mega_cluster.csv")
+mega_clusters = read.csv("../input/raw_files/Table_mega_cluster_mm2.csv")
+entropy_clusters = read.csv("../input/raw_files/table_entropy_mega_cluster.csv")
 ```
 
 Matrix with entropy values per patient

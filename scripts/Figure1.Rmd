@@ -15,7 +15,7 @@ library(tidyr)
 Load data
 ```{r}
 load("../input/Spatial_densities.RData")
-traitData = read.csv("../../LungPredict2/Data/Gobbini/Raw_files/clinical_data_clean.csv") %>%
+traitData = read.csv("../input/raw_files/clinical_data_clean.csv") %>%
   dplyr::filter(AN_clean %in% rownames(data_spatial$Stroma)) #Subset to only patients with clinical data
 
 ### Replace '+' with 'plus' to avoid mismatches and change to a numeric matrix

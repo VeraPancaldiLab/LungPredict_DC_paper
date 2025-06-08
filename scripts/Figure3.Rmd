@@ -12,9 +12,9 @@ source("~/Documents/CellTFusion_paper/user_projects/src/environment_set.R")
 
 Load data
 ```{r}
-entropy_clusters = read.csv("~/Downloads/Spatial_Gobbini/table_entropy_mega_cluster.csv")
-counts = read.csv("../../LungPredict2/Data/Gobbini/Raw_files/counts_raw.csv", row.names = 1) 
-traitData = read.csv("../../LungPredict2/Data/Gobbini/Raw_files/clinical_data_clean.csv") %>%
+entropy_clusters = read.csv("../input/raw_files/table_entropy_mega_cluster.csv")
+counts = read.csv("../input/raw_files/counts_raw.csv", row.names = 1) 
+traitData = read.csv("../input/raw_files/clinical_data_clean.csv") %>%
   dplyr::filter(N_Raw_matrice_Bulk %in% colnames(counts)) %>%
   tibble::column_to_rownames("N_Raw_matrice_Bulk")
 
