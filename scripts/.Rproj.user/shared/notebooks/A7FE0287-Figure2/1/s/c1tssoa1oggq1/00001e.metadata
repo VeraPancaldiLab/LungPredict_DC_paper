@@ -1,1 +1,0 @@
-{"height":432.6328800988875,"width":700.0,"size_behavior":0,"conditions":[[1,"Warning: \u001B[38;5;255mRemoved 354 rows containing non-finite outside the scale range (`stat_boxplot()`).\u001B[39m"],[1,"Warning: \u001B[38;5;255mRemoved 354 rows containing non-finite outside the scale range (`stat_compare_means()`).\u001B[39m"]]}

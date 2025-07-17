@@ -100,13 +100,11 @@ Stroma vs Tumor
 ```{r}
 data_spatial$Stroma = data_spatial$Stroma %>%
   data.frame() %>%
-  dplyr::mutate(Tissue = "Stroma") %>%
-  dplyr::mutate(across(where(is.numeric), ~ log10(. + 1e-5)))
+  dplyr::mutate(Tissue = "Stroma") 
 
 data_spatial$Tumor = data_spatial$Tumor %>%
   data.frame() %>%
-  dplyr::mutate(Tissue = "Tumor") %>%
-  dplyr::mutate(across(where(is.numeric), ~ log10(. + 1e-5)))
+  dplyr::mutate(Tissue = "Tumor") 
 
 combined_df <- bind_rows(data_spatial$Stroma, data_spatial$Tumor)
 
@@ -129,6 +127,7 @@ for (cells in colnames(combined_df)) {
          y = "Log10 cell densities") +
     theme_minimal(base_size = 14) +
     scale_fill_manual(values = c("Stroma" = "darkblue", "Tumor" = "darkturquoise")) +
+    scale_y_log10() + 
     theme(
       plot.title = element_text(hjust = 0.5, face = "bold"),
       axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = 0.5)
@@ -154,30 +153,31 @@ for (i in traits) {
   # Prepare results dataframe
   results <- data.frame()
   
-  for (tissue in setdiff(names(data_spatial), "Total")){
+  #setdiff(names(data_spatial), "Total")
+  for (tissue in names(data_spatial)){
     
     if(i == "all"){
       data_sub = data_spatial[[tissue]] %>%
         data.frame() %>%
-        dplyr::mutate(Trait = traitData$R.NR)    
+        dplyr::mutate(Trait = factor(traitData$R.NR))    
     }else if(i == "mts"){
       data_sub = data_spatial[[tissue]] %>%
         data.frame() %>%
-        dplyr::mutate(Trait = traitData$R.NR,
+        dplyr::mutate(Trait = factor(traitData$R.NR),
                       Site = traitData$Site_biopsie) %>%
-        dplyr::filter(Site == traits) 
+        dplyr::filter(Site == i) 
     }else if(i == "node"){
       data_sub = data_spatial[[tissue]] %>%
         data.frame() %>%
-        dplyr::mutate(Trait = traitData$R.NR,
+        dplyr::mutate(Trait = factor(traitData$R.NR),
                       Site = traitData$Site_biopsie) %>%
-        dplyr::filter(Site == traits) 
+        dplyr::filter(Site == i) 
     }else if(i == "primary"){
       data_sub = data_spatial[[tissue]] %>%
         data.frame() %>%
-        dplyr::mutate(Trait = traitData$R.NR,
+        dplyr::mutate(Trait = factor(traitData$R.NR),
                       Site = traitData$Site_biopsie) %>%
-        dplyr::filter(Site == traits) 
+        dplyr::filter(Site == i) 
     }
   
     for (cells in colnames(data_sub)) {
@@ -186,9 +186,34 @@ for (i in traits) {
       data_sub = data_sub %>%
         dplyr::mutate(cell_type = data_sub[,cells])
         
+      
+      # # Logistic regression
+      # model <- try(glm(Trait ~ cell_type, data = data_sub, family = "binomial"), silent = TRUE)
+      # 
+      # if (!inherits(model, "try-error")) {
+      #   coef_summary <- summary(model)$coefficients
+      #   if ("cell_type" %in% rownames(coef_summary)) {
+      #     OR <- exp(coef(model)["cell_type"])
+      #     pval <- coef_summary["cell_type", "Pr(>|z|)"]
+      #   } else {
+      #     OR <- NA
+      #     pval <- NA
+      #   }
+      # } else {
+      #   OR <- NA
+      #   pval <- NA
+      # }
+      # 
+      # results <- rbind(results, data.frame(
+      #   Tissue = tissue,
+      #   Cell_type = cells,
+      #   OR = OR,
+      #   p_value = pval
+      # ))
+            
       # Run Wilcoxon test
       test <- wilcox.test(data_sub[,cells] ~ data_sub$Trait, exact = FALSE)
-      
+
       # Collect results
       results <- rbind(results, data.frame(
         Tissue = tissue,
@@ -205,8 +230,14 @@ for (i in traits) {
   
   # Create label column for plot
   results$label <- paste0("p = ", signif(results$p_value, 3))
-  
+  #results$label <- paste0("OR = ", signif(results$OR, 2), ", p = ", signif(results$p_value, 3))
+
   results$feature = paste0(results$Tissue, "_", results$Cell_type)
+  
+  results = results %>%
+    dplyr::filter(Cell_type != "Pneumocyte_plus",
+                 (Tissue == "Tumor" & Cell_type %in% c("CD8_plus", "cDC2_plus")) |
+                 (Tissue == "Stroma" & Cell_type %in% c("pDC_plus", "cDC1_plus", "cDC2_plus", "CD8_plus")))
   
   res[[contador]] = results
   names(res)[contador] = i
@@ -220,23 +251,23 @@ for (i in names(res)) {
   data = res[[i]]
   
   data <- data %>%
-    arrange(p_adj) %>%
-    mutate(feature_label = ifelse(p_adj < 0.05,
+    arrange(p_value) %>%
+    mutate(feature_label = ifelse(p_value < 0.05,
                                   paste0("**", as.character(feature), "**"),
                                   as.character(feature)),
            feature_label = factor(feature_label, levels = feature_label))
 
   
   # Plot
-  print(ggplot(data, aes(x = feature_label, y = p_adj)) +
-    geom_segment(aes(x = feature_label, xend = feature_label, y = max(p_adj), yend = p_adj),
+  print(ggplot(data, aes(x = feature_label, y = p_value)) +
+    geom_segment(aes(x = feature_label, xend = feature_label, y = max(p_value), yend = p_value),
                  color = "skyblue", size = 1.5) +
     geom_point(color = "darkblue", size = 6) +  # larger dot
     scale_y_reverse() +  # most significant at top
     labs(
-      title = paste0("Adjusted p-value lollipop graph for cell densities (R vs NR) - ", i),
+      title = paste0("Lollipop graph for cell densities (R vs NR) - ", i),
       x = "Cell type",
-      y = "Adjusted p-value"
+      y = "p-value"
     ) +
     theme_minimal() +
     theme(
@@ -266,7 +297,8 @@ compute.survival.analysis = function(features, survival.data, time_unit, p.value
       
       # Prepare the data for survival analysis
       data_for_model <- data.frame("time" = survival.data$PFS,
-                                   "status" = survival.data$PFS_event) 
+                                   "status" = survival.data$PFS_event,
+                                   "response" = survival.data$R.NR) 
       
       data_for_model = cbind(data_for_model, features[,comb, drop=F])
       
@@ -274,7 +306,7 @@ compute.survival.analysis = function(features, survival.data, time_unit, p.value
       cox <- rms::cph(formula, data = data_for_model)
       data_for_model$CoxPredictors <- cox$linear.predictors #linear predictors is the risk score for each individual in the dataset
       
-      # Check that the model is significant as a predictor (maybe not useful?, it gives the same linear.predictos - to be check)
+      # Check that the model is significant as a predictor (maybe not useful?, it gives the same linear.predictions - to be check)
       cphmodel <- survival::coxph(survival::Surv(time, status) ~ CoxPredictors, data = data_for_model)
       data_for_model$CoxPredictors <- cphmodel$linear.predictors
       
@@ -282,6 +314,28 @@ compute.survival.analysis = function(features, survival.data, time_unit, p.value
       
       # Binarize the Cox model output to draw two KM lines (linear predictors are used to stratify between high-risk and low-risk groups)
       data_for_model$coxHL <- ifelse(cphmodel$linear.predictors >= quantiles, 'High', "Low") 
+
+      feature_name <- colnames(features)[comb]
+      high_vals <- data_for_model[data_for_model$coxHL == "High", feature_name]
+      low_vals <- data_for_model[data_for_model$coxHL == "Low", feature_name]
+      
+      mean_high <- mean(high_vals, na.rm = TRUE)
+      mean_low  <- mean(low_vals, na.rm = TRUE)
+      
+      direction <- if (mean_high > mean_low) {
+        "Cell-type high in high-risk"
+      } else if (mean_high < mean_low) {
+        "Cell-type high in low-risk"
+      } else {
+        "no change"
+      }
+      
+      # Perform wilcox test for have clear the direction
+      x = data_for_model %>%
+        dplyr::mutate(feature = data_for_model[,feature_name])
+      
+      wilcox_result <- wilcox.test(x$feature ~ x$coxHL)
+      p_wilcox <- signif(wilcox_result$p.value, 3)
       
       # Perform Kaplan-Meier based on coxHL
       km_fit <- survival::survfit(survival::Surv(time, status) ~ coxHL, data = data_for_model)
@@ -289,9 +343,30 @@ compute.survival.analysis = function(features, survival.data, time_unit, p.value
       pval <- survminer::surv_pvalue(km_fit, data = data_for_model)$pval #Performs log-rank test to see whether both survival curves are significantly different
       
       if (!is.na(pval) && pval < p.value) {
+
         significant_combinations[[contador]] <- formula
         names(significant_combinations)[contador] = paste0("Formula_", contador)
         
+        # Create boxplots
+        box_plot <- ggplot2::ggplot(x, ggplot2::aes(x = coxHL, y = feature, fill = coxHL)) +
+          ggplot2::geom_boxplot(alpha = 0.8) +
+          ggplot2::geom_jitter(width = 0.2, size = 1.5, alpha = 0.6) +
+          ggplot2::labs(title = paste0("Cell Type Abundance vs Risk Group"),
+                        subtitle = paste0("Wilcoxon p = ", p_wilcox),
+                        x = "Risk Group",
+                        y = feature_name) +
+          ggplot2::scale_fill_manual(values = c("Low" = "#2E9FDF", "High" = "#E7B800")) +
+          ggplot2::theme_minimal()
+
+        pdf(paste0("Results/Boxplot_wilcox_", feature_name), width = 10, height = 5, onefile = FALSE)
+        print(box_plot)
+        dev.off()
+      
+        ### Set colors of each curve with the correct order 
+        strata_names <- gsub("coxHL=", "", names(km_fit$strata)) 
+        legend_labels <- strata_names
+        legend.labs = legend_labels
+
         pdf(paste0("Results/SurvPlot_", names(significant_combinations)[contador]), width = 10, height = 5, onefile = FALSE)
         print(survminer::ggsurvplot(km_fit,
                          data = data_for_model,
@@ -301,10 +376,11 @@ compute.survival.analysis = function(features, survival.data, time_unit, p.value
                          pval = TRUE,
                          risk.table = TRUE,
                          risk.table.col = "strata",
-                         legend.labs = c("High", "Low"),
+                         legend.labs = legend.labs,
                          risk.table.height = 0.3,
                          ggtheme = theme_grey(),
                          title = paste0("Cox PH for ", paste("Surv(time, status) ~", paste(colnames(features)[comb], collapse = " + "))),
+                         subtitle = direction,
                          xlab = paste0("Time to death/recurrence/progression (", time_unit, ")")
         ))
         dev.off()
@@ -324,16 +400,7 @@ compute.survival.analysis = function(features, survival.data, time_unit, p.value
 
 Compute survival analysis
 ```{r}
-load("../input/Spatial_densities.RData")
-
-### Replace '+' with 'plus' to avoid mismatches and change to a numeric matrix
-data_spatial <- lapply(data_spatial, function(x) {
-  colnames(x) <- gsub("\\+", "_plus", colnames(x))
-  x <- as.matrix(x)                     
-  storage.mode(x) <- "numeric"       
-  return(x)
-})
-
-res_stroma = compute.survival.analysis(data_spatial$Stroma, traitData, "days", p.value = 5, max_factors = 2)
+res_stroma = compute.survival.analysis(data_spatial$Stroma, traitData, "months", p.value = 0.05, thres = 0.5, max_factors = 1)
 ```
+
 
