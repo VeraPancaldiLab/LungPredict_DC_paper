@@ -300,42 +300,12 @@ compute.survival.analysis = function(features, survival.data, time_unit, p.value
                                    "status" = survival.data$PFS_event,
                                    "response" = survival.data$R.NR) 
       
-      data_for_model = cbind(data_for_model, features[,comb, drop=F])
-      
-      # Fit the Cox PH model with the combination of features (cox PH take into account covariates and measure the impact of each variable in the survival time)
-      cox <- rms::cph(formula, data = data_for_model)
-      data_for_model$CoxPredictors <- cox$linear.predictors #linear predictors is the risk score for each individual in the dataset
-      
-      # Check that the model is significant as a predictor (maybe not useful?, it gives the same linear.predictions - to be check)
-      cphmodel <- survival::coxph(survival::Surv(time, status) ~ CoxPredictors, data = data_for_model)
-      data_for_model$CoxPredictors <- cphmodel$linear.predictors
-      
-      quantiles <- quantile(data_for_model$CoxPredictors, thres) 
-      
+      quantiles <- quantile(features[,comb], thres) 
+
       # Binarize the Cox model output to draw two KM lines (linear predictors are used to stratify between high-risk and low-risk groups)
-      data_for_model$coxHL <- ifelse(cphmodel$linear.predictors >= quantiles, 'High', "Low") 
+      data_for_model$coxHL <- factor(ifelse(features[,comb] >= quantiles, paste0('High_', colnames(features)[comb]), paste0("Low_", colnames(features)[comb]))) 
 
       feature_name <- colnames(features)[comb]
-      high_vals <- data_for_model[data_for_model$coxHL == "High", feature_name]
-      low_vals <- data_for_model[data_for_model$coxHL == "Low", feature_name]
-      
-      mean_high <- mean(high_vals, na.rm = TRUE)
-      mean_low  <- mean(low_vals, na.rm = TRUE)
-      
-      direction <- if (mean_high > mean_low) {
-        "Cell-type high in high-risk"
-      } else if (mean_high < mean_low) {
-        "Cell-type high in low-risk"
-      } else {
-        "no change"
-      }
-      
-      # Perform wilcox test for have clear the direction
-      x = data_for_model %>%
-        dplyr::mutate(feature = data_for_model[,feature_name])
-      
-      wilcox_result <- wilcox.test(x$feature ~ x$coxHL)
-      p_wilcox <- signif(wilcox_result$p.value, 3)
       
       # Perform Kaplan-Meier based on coxHL
       km_fit <- survival::survfit(survival::Surv(time, status) ~ coxHL, data = data_for_model)
@@ -347,21 +317,6 @@ compute.survival.analysis = function(features, survival.data, time_unit, p.value
         significant_combinations[[contador]] <- formula
         names(significant_combinations)[contador] = paste0("Formula_", contador)
         
-        # Create boxplots
-        box_plot <- ggplot2::ggplot(x, ggplot2::aes(x = coxHL, y = feature, fill = coxHL)) +
-          ggplot2::geom_boxplot(alpha = 0.8) +
-          ggplot2::geom_jitter(width = 0.2, size = 1.5, alpha = 0.6) +
-          ggplot2::labs(title = paste0("Cell Type Abundance vs Risk Group"),
-                        subtitle = paste0("Wilcoxon p = ", p_wilcox),
-                        x = "Risk Group",
-                        y = feature_name) +
-          ggplot2::scale_fill_manual(values = c("Low" = "#2E9FDF", "High" = "#E7B800")) +
-          ggplot2::theme_minimal()
-
-        pdf(paste0("Results/Boxplot_wilcox_", feature_name), width = 10, height = 5, onefile = FALSE)
-        print(box_plot)
-        dev.off()
-      
         ### Set colors of each curve with the correct order 
         strata_names <- gsub("coxHL=", "", names(km_fit$strata)) 
         legend_labels <- strata_names
@@ -402,5 +357,3 @@ Compute survival analysis
 ```{r}
 res_stroma = compute.survival.analysis(data_spatial$Stroma, traitData, "months", p.value = 0.05, thres = 0.5, max_factors = 1)
 ```
-
-
