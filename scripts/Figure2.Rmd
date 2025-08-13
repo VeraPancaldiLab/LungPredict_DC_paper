@@ -177,7 +177,7 @@ coldata = coldata %>%
 #   dplyr::filter(Groups != 4)
 df_density = df_density[rownames(df_density)%in%rownames(coldata),]
 
-coldata$Groups = ifelse(coldata$Groups %in% c(4,2), 2, coldata$Groups)
+#coldata$Groups = ifelse(coldata$Groups %in% c(4,2), 2, coldata$Groups)
 ```
 
 PCA 

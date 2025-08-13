@@ -1,0 +1,87 @@
+---
+title: "Figure4"
+author: "Marcelo Hurtado"
+date: "2025-08-12"
+output: html_document
+---
+
+Load data
+```{r}
+counts = read.delim("~/Documents/LungPredict_late_stage/Data/Captier/TIPIT_RNA_TPM_134.txt")
+clinical = read.delim("~/Documents/LungPredict_late_stage/Data/Captier/TIPIT_reponse_134.txt")
+```
+
+Processed data
+```{r}
+counts = counts %>%
+  dplyr::select(-GeneID) %>%
+  dplyr::distinct(gene_name, .keep_all = T) %>%
+  tibble::column_to_rownames("gene_name")
+
+clinical = clinical %>%
+  dplyr::mutate(Batch = as.numeric(counts[1,])) %>%
+  tibble::column_to_rownames("patient_ID")
+  
+counts = counts[-1,rownames(clinical)]
+```
+
+Log normalized
+```{r}
+counts.norm.log = log(counts + 1)
+```
+
+Gene sets
+```{r}
+genesets = readRDS("group_marker_genesets.rds")
+sig_scores = compute.pathway.activity(counts.norm.log, gene_sets = genesets)[[2]]
+patient_group <- apply(sig_scores, 1, function(x) names(which.max(x)))
+clinical$group = patient_group
+```
+Function for survival analysis
+```{r}
+compute.survival.analysis = function(features, survival.data, time_unit, p.value = 0.05) {
+  library(survival)
+  n_features <- ncol(features)
+  significant_combinations <- list() # To store significant feature combinations
+  
+  # Prepare the data for survival analysis
+  data_for_model <- data.frame("time" = survival.data$PFS,
+                               "status" = survival.data$PFS_bin,
+                               "response" = survival.data$Progression) 
+  
+  data_for_model$coxHL <- survival.data$group
+
+  # Perform Kaplan-Meier based on coxHL
+  km_fit <- survival::survfit(survival::Surv(time, status) ~ coxHL, data = data_for_model)
+  
+  pval <- survminer::surv_pvalue(km_fit, data = data_for_model)$pval #Performs log-rank test to see whether both survival curves are significantly different
+  
+  ### Set colors of each curve with the correct order 
+  strata_names <- gsub("coxHL=", "", names(km_fit$strata)) 
+  legend_labels <- strata_names
+  legend.labs = legend_labels
+
+  pdf("Results/SurvPlot_DEG_groups", width = 10, height = 5, onefile = FALSE)
+  print(survminer::ggsurvplot(km_fit,
+                   data = data_for_model,
+                   size = 1,
+                   conf.int.style = "step",
+                   pval = TRUE,
+                   risk.table = TRUE,
+                   risk.table.col = "strata",
+                   legend.labs = legend.labs,
+                   risk.table.height = 0.3,
+                   ggtheme = theme_grey(),
+                   title = paste0("Cox PH for Surv(time, status) ~ patient groups"),
+                   xlab = paste0("Time to death/recurrence/progression (", time_unit, ")")
+  ))
+  dev.off()
+
+}
+```
+
+Compute survival analysis
+```{r}
+res_clusters = compute.survival.analysis(sig_scores, clinical, "months", p.value = 1)
+```
+
