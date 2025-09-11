@@ -5,6 +5,15 @@ date: "2025-08-12"
 output: html_document
 ---
 
+Load libraries
+```{r}
+source("~/Documents/LungPredict_late_stage/Scripts/src/CellTFusion.R")
+library(dplyr)
+library(tibble)
+library(ggplot2)
+set.seed(123)
+```
+
 Load data
 ```{r}
 counts = read.delim("~/Documents/LungPredict_late_stage/Data/Captier/TIPIT_RNA_TPM_134.txt")
@@ -34,54 +43,64 @@ Gene sets
 ```{r}
 genesets = readRDS("group_marker_genesets.rds")
 sig_scores = compute.pathway.activity(counts.norm.log, gene_sets = genesets)[[2]]
-patient_group <- apply(sig_scores, 1, function(x) names(which.max(x)))
-clinical$group = patient_group
 ```
-Function for survival analysis
+
+Survival analysis
 ```{r}
-compute.survival.analysis = function(features, survival.data, time_unit, p.value = 0.05) {
+compute.survival.analysis = function(data, value_name, survival.data, time_unit, file_name) {
   library(survival)
-  n_features <- ncol(features)
-  significant_combinations <- list() # To store significant feature combinations
+  library(survminer)
   
-  # Prepare the data for survival analysis
-  data_for_model <- data.frame("time" = survival.data$PFS,
-                               "status" = survival.data$PFS_bin,
-                               "response" = survival.data$Progression) 
+  # Example: using Group2vs4_markers score as continuous predictor
+  data_for_model <- data.frame(time = survival.data$PFS,
+                               status = survival.data$PFS_bin,
+                               response = survival.data$Progression,
+                               score  = data[,value_name]
+  )
   
-  data_for_model$coxHL <- survival.data$group
-
-  # Perform Kaplan-Meier based on coxHL
-  km_fit <- survival::survfit(survival::Surv(time, status) ~ coxHL, data = data_for_model)
+  # Cox PH model with continuous score
+  cox_model <- coxph(Surv(time, status) ~ score, data = data_for_model)
+  summary_cox <- summary(cox_model)
   
-  pval <- survminer::surv_pvalue(km_fit, data = data_for_model)$pval #Performs log-rank test to see whether both survival curves are significantly different
+  hr  <- summary_cox$coef[1, "exp(coef)"]    # hazard ratio
+  pval <- summary_cox$coef[1, "Pr(>|z|)"]    # p-value
   
-  ### Set colors of each curve with the correct order 
-  strata_names <- gsub("coxHL=", "", names(km_fit$strata)) 
-  legend_labels <- strata_names
-  legend.labs = legend_labels
-
-  pdf("Results/SurvPlot_DEG_groups", width = 10, height = 5, onefile = FALSE)
-  print(survminer::ggsurvplot(km_fit,
-                   data = data_for_model,
-                   size = 1,
-                   conf.int.style = "step",
-                   pval = TRUE,
-                   risk.table = TRUE,
-                   risk.table.col = "strata",
-                   legend.labs = legend.labs,
-                   risk.table.height = 0.3,
-                   ggtheme = theme_grey(),
-                   title = paste0("Cox PH for Surv(time, status) ~ patient groups"),
-                   xlab = paste0("Time to death/recurrence/progression (", time_unit, ")")
-  ))
+  message("Cox PH model: HR = ", round(hr, 3), 
+          " (95% CI ", round(summary_cox$conf.int[1,3], 3), "-", 
+                         round(summary_cox$conf.int[1,4], 3), 
+          "), p = ", signif(pval, 3))
+  
+  # Dichotomize only for visualization (median split)
+  data_for_model$group <- ifelse(data_for_model$score >= median(data_for_model$score, na.rm=TRUE),
+                                 "High", "Low")
+  km_fit <- survfit(Surv(time, status) ~ group, data = data_for_model)
+  
+  # KM plot without log-rank p-value, only Cox PH in subtitle
+  pdf(paste0("Results/SurvPlot_DEG_groups_", file_name), width = 10, height = 5, onefile = FALSE)
+  print(
+    ggsurvplot(
+      km_fit, data = data_for_model,
+      pval = FALSE,  # remove log-rank test
+      risk.table = TRUE,
+      risk.table.col = "strata",
+      size = 1,
+      conf.int = FALSE,
+      legend.labs = c("Low score", "High score"),
+      ggtheme = theme_minimal(),
+      title = paste0("Survival by DEG signature score (", time_unit, ")"),
+      xlab = paste0("Time to death/recurrence/progression (", time_unit, ")"),
+      subtitle = paste0("Cox PH (continuous): HR=", round(hr,3), ", p=", signif(pval,3))
+    )
+  )
   dev.off()
-
+  
+  return(list(cox_model = cox_model, hr = hr, pval = pval))
 }
+
 ```
 
 Compute survival analysis
 ```{r}
-res_clusters = compute.survival.analysis(sig_scores, clinical, "months", p.value = 1)
+res_clusters = compute.survival.analysis(sig_scores, "Group4vs2_markers", clinical, "months", file_name = "Captier_group4vs2")
 ```
 

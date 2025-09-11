@@ -39,7 +39,7 @@ combined_table = combined_table %>%
 Processing of spatial data
 ```{r}
 ## Load clinical data
-traitData = read.csv("../../LungPredict2/Data/Gobbini/Raw_files/clinical_data_clean.csv")
+traitData = read.csv("../../LungPredict_DC_paper/input/raw_files/clinical_data_clean.csv")
 ## Extract patients with RNAseq
 patients = traitData %>%
   filter(AN_clean != "") %>%
