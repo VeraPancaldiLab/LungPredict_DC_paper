@@ -346,7 +346,7 @@ library(DESeq2)
 coldata$group_1 <- factor(ifelse(coldata$Groups == 1, 1, "rest"))
 dds_A <- DESeqDataSetFromMatrix(round(counts), coldata, design = ~ group_1)
 dds_A <- DESeq(dds_A)
-res_A <- results(dds_A, contrast = c("group_1", 1, "rest"))
+res_1 <- results(dds_A, contrast = c("group_1", 1, "rest"))
 
 # Repeat for group B
 coldata$group_2 <- factor(ifelse(coldata$Groups == 2, 2, "rest"))
@@ -363,7 +363,8 @@ res_C <- results(dds_C, contrast = c("group_4", 4, "rest"))
 ### Group 2 vs 4
 dds_D <- DESeqDataSetFromMatrix(round(counts), coldata, design = ~ Groups)
 dds_D <- DESeq(dds_D)
-res_D <- results(dds_D, contrast = c("Groups", 2, 4))
+res_2 <- results(dds_D, contrast = c("Groups", 2, 4))
+res_4 <- results(dds_D, contrast = c("Groups", 4, 2))
 ```
 
 Volcano plots
@@ -372,7 +373,7 @@ library(ggplot2)
 library(ggrepel)
 
 # Volcano plot with labels
-plot_volcano <- function(res, group_name, lfc_thresh = 1.5, padj_thresh = 0.05) {
+plot_volcano <- function(res, group_name, lfc_thresh = 2, padj_thresh = 0.05) {
   
   res <- as.data.frame(res)
   
@@ -400,10 +401,10 @@ plot_volcano <- function(res, group_name, lfc_thresh = 1.5, padj_thresh = 0.05) 
     theme_minimal()
 }
 
-p_A <- plot_volcano(as.data.frame(res_A), "Group 1")
-p_B <- plot_volcano(as.data.frame(res_B), "Group 2")
-p_C <- plot_volcano(as.data.frame(res_C), "Group 4")
-p_D <- plot_volcano(as.data.frame(res_D), "Group 2 vs 4")
+p_A <- plot_volcano(as.data.frame(res_1), "Group 1 vs all")
+p_B <- plot_volcano(as.data.frame(res_2), "Group 2 vs 4")
+p_C <- plot_volcano(as.data.frame(res_4), "Group 4 vs 2")
+#p_D <- plot_volcano(as.data.frame(res_D), "Group 2 vs 4")
 
 p_A
 p_B
@@ -413,41 +414,139 @@ p_C
 DEG signatures
 ```{r}
 # Function to extract markers for the group
-extract_markers <- function(res, lfc_thresh = 1, padj_thresh = 0.05) {
-  res <- as.data.frame(res) %>% 
+extract_markers <- function(res, lfc_thresh = 1, padj_thresh = 0.05, direction = c("up", "down", "both")) {
+  direction <- match.arg(direction)
+  
+  res <- as.data.frame(res) %>%
     tibble::rownames_to_column("gene")
   
-  subset(res, log2FoldChange > lfc_thresh & padj < padj_thresh)$gene
+  if (direction == "up") {
+    genes <- subset(res, log2FoldChange >  lfc_thresh & padj < padj_thresh)$gene
+  } else if (direction == "down") {
+    genes <- subset(res, log2FoldChange < -lfc_thresh & padj < padj_thresh)$gene
+  } else { # both
+    genes <- subset(res, abs(log2FoldChange) > lfc_thresh & padj < padj_thresh)$gene
+  }
+  
+  return(genes)
 }
 
 # Markers for each group
-markers_group1 <- extract_markers(res_A) # Genes up in Group A
-markers_group2 <- extract_markers(res_B) # Genes up in Group B
-markers_group4 <- extract_markers(res_C) # Genes up in Group C
+markers_group1 <- extract_markers(res_1, lfc_thresh = 1, padj_thresh = 0.01, direction = "up")
+# markers_group2 <- extract_markers(res_B, lfc_thresh = 2, padj_thresh = 0.01, direction = "up")
+# markers_group4 <- extract_markers(res_C, lfc_thresh = 2, padj_thresh = 0.01, direction = "up")
+markers_group2 <- extract_markers(res_2, lfc_thresh = 1, padj_thresh = 0.01, direction = "up")
+markers_group4 <- extract_markers(res_4, lfc_thresh = 1, padj_thresh = 0.01, direction = "up")
 
-# Pairwise 2 vs 4 (only up in 2)
-dds <- DESeqDataSetFromMatrix(round(counts), coldata, design = ~ Groups)
-dds <- DESeq(dds)
-res_4v2 <- results(dds, contrast = c("Groups", "4", "2"))
-markers_4v2 <- as.data.frame(res_4v2) %>%
-  rownames_to_column("gene") %>%
-  filter(log2FoldChange > 1.0 & padj < 0.05) %>%
-  pull(gene)
-
-# Create gene set list
 gene_sets <- list(
   Group1_markers = markers_group1,
   Group2_markers = markers_group2,
-  Group4_markers = markers_group4,
-  Group4vs2_markers = markers_4v2
+  Group4_markers = markers_group4
 )
 
 ```
 
+TFs
+```{r}
+source("~/Downloads/diff_analysis.R")
+coldata$group_1 <- factor(ifelse(coldata$Groups == 1, 1, "rest"))
+res_1 = diff_analysis(counts.norm.log, coldata$group_1, "1", "rest", file.name = "Diff_1vsrest")
+
+coldata$group_2 <- factor(ifelse(coldata$Groups == 2, 2, "rest"))
+res_2 = diff_analysis(counts.norm.log, coldata$group_2, "2", "rest", file.name = "Diff_2vsrest")
+#res_2 = diff_analysis(counts.norm.log, coldata$Groups, "2", "4", file.name = "Diff_2vsrest")
+
+coldata$group_4 <- factor(ifelse(coldata$Groups == 4, 4, "rest"))
+res_4 = diff_analysis(counts.norm.log, coldata$group_4, "4", "rest", file.name = "Diff_4vsrest")
+#res_4 = diff_analysis(counts.norm.log, coldata$Groups, "4", "2", file.name = "Diff_4vs2")
+
+gene_sets <- list(
+  Group1_markers = res_1$TFs_UP,
+  Group2_markers = res_2$TFs_UP,
+  Group4_markers = res_4$TFs_UP
+)
+```
+
 Signatures scores
 ```{r}
+tfs = scale(compute.TFs.activity(counts.norm.log))
+#deg_signatures_score = compute.pathway.activity(t(tfs), gene_sets = gene_sets)[[2]]
 deg_signatures_score = compute.pathway.activity(counts.norm.log, gene_sets = gene_sets)[[2]]
+patient_group <- apply(deg_signatures_score, 1, function(x) names(which.max(x)))
+coldata$deg_group = patient_group
 ```
+
+Function for survival analysis
+```{r}
+compute.survival.analysis = function(survival.data, time_unit) {
+  library(survival)
+
+  # Prepare the data for survival analysis
+  data_for_model <- data.frame("time" = survival.data$PFS,
+                               "status" = survival.data$PFS_event) 
+  
+  data_for_model$coxHL <- survival.data$deg_group
+
+  # Perform Kaplan-Meier based on coxHL
+  km_fit <- survival::survfit(survival::Surv(time, status) ~ coxHL, data = data_for_model)
+  
+  pval <- survminer::surv_pvalue(km_fit, data = data_for_model)$pval #Performs log-rank test to see whether both survival curves are significantly different
+  
+  ### Set colors of each curve with the correct order 
+  strata_names <- gsub("coxHL=", "", names(km_fit$strata)) 
+  legend_labels <- strata_names
+  legend.labs = legend_labels
+
+  pdf("Results/SurvPlot_DEG_groups", width = 10, height = 5, onefile = FALSE)
+  print(survminer::ggsurvplot(km_fit,
+                   data = data_for_model,
+                   size = 1,
+                   conf.int.style = "step",
+                   pval = TRUE,
+                   risk.table = TRUE,
+                   risk.table.col = "strata",
+                   legend.labs = legend.labs,
+                   risk.table.height = 0.3,
+                   ggtheme = theme_grey(),
+                   title = paste0("Cox PH for Surv(time, status) ~ patient groups"),
+                   xlab = paste0("Time to death/recurrence/progression (", time_unit, ")")
+  ))
+  dev.off()
+
+}
+```
+
+Compute survival analysis
+```{r}
+res_clusters = compute.survival.analysis(coldata, "months")
+```
+
+Save genesets
+```{r}
+saveRDS(gene_sets, "group_marker_genesets.rds")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ########################
 ```{r}
@@ -508,7 +607,3 @@ Compute survival analysis
 res_clusters = compute.survival.analysis(deg_signatures_score, "Group4vs2_markers", coldata, "months", file_name = "Group4vs2")
 ```
 
-Save genesets
-```{r}
-saveRDS(gene_sets, "group_marker_genesets.rds")
-```
