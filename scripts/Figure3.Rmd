@@ -7,7 +7,7 @@ output: html_document
 
 Load libraries
 ```{r}
-source("~/Documents/LungPredict_late_stage/Scripts/src/CellTFusion.R")
+library(CellTFusion)
 library(dplyr)
 library(tibble)
 library(ggplot2)
@@ -178,6 +178,8 @@ gene_sets <- list(
 )
 
 dc_signatures_score = compute.pathway.activity(counts.norm.log, gene_sets = gene_sets)[[2]]
+compute.modules.relationship(dc_signatures_score, data_spatial[,grep(paste0(paste0("Total.", dc_subtypes), collapse = "|"), colnames(data_spatial)), drop = F], 
+                             file_name = "Pathways-spatial", width = 8, height = 7)
 compute.metada.association(dc_signatures_score, coldata[,"R.NR",drop=F], width = 8, height = 15, pval = 1)
 ```
 
@@ -252,6 +254,28 @@ geneset = list(chemokines)
 
 chemokines_score = compute.pathway.activity(counts.norm.log, gene_sets = geneset)[[2]]
 colnames(chemokines_score)[[1]] = "chemokines_score"
+
+counts.norm.chemokines = counts.norm.log[rownames(counts.norm.log)%in%chemokines,]
+compute.modules.relationship(t(counts.norm.chemokines), df_entropy, "Entropy-Chemokines", width = 8, height = 15)
+compute.modules.relationship(t(counts.norm.chemokines), df_density, "Density-Chemokines", width = 8, height = 15)
+```
+
+Interferon genes
+```{r}
+# Type I interferons (alpha and beta)
+IFN_I <- c(
+  "IFNA1", "IFNA2", "IFNA4", "IFNA5", "IFNA6", "IFNA7", "IFNA8",
+  "IFNA10", "IFNA13", "IFNA14", "IFNA16", "IFNA17", "IFNA21",
+  "IFNB1"
+)
+
+# Type II interferon (gamma)
+IFN_II <- c("IFNG")
+
+# Type III interferons (lambda)
+IFN_III <- c("IFNL1", "IFNL2", "IFNL3", "IFNL4")
+
+compute.metada.association(t(counts.norm.log[rownames(counts.norm.log)%in%c(IFN_I, IFN_II, IFN_III),]), coldata[,"Groups", drop = F], pval = 0.05)
 ```
 
 Immunoscores
@@ -313,6 +337,8 @@ dev.off()
 ### CBSX-LM22
 deconv_cbsx_lm22 = deconv[,grep("CBSX_LM22", colnames(deconv))]
 compute.metada.association(deconv_cbsx_lm22, coldata[,"Groups", drop = F], pval = 5)
+compute.modules.relationship(deconv_cbsx_lm22, df_entropy, "Entropy-Deconv_LM22", width = 8, height = 12)
+compute.modules.relationship(deconv_cbsx_lm22, df_density, "Density-Deconv_LM22", width = 8, height = 12)
 ```
 
 TFs modules
@@ -526,9 +552,66 @@ Save genesets
 saveRDS(gene_sets, "group_marker_genesets.rds")
 ```
 
+Evolution across megaclusters
+```{r}
+plot_features_across_clusters <- function(data_groups, features_df, file_title, filter_significant = FALSE, pval_threshold = 0.05) {
+  
+  cluster_group <- data_groups %>%
+    dplyr::mutate(Sample = rownames(.)) %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(MaxCluster = names(.)[which.max(c_across(-Sample))]) %>%
+    dplyr::select(Sample, MaxCluster)
+  
+  features_long <- features_df %>%
+    data.frame() %>%
+    dplyr::mutate(Sample = rownames(.)) %>%
+    tidyr::pivot_longer(cols = -Sample, names_to = "Feature", values_to = "Value") %>%
+    dplyr::left_join(cluster_group, by = "Sample")
+  
+  if (filter_significant) {
+    feature_pvals <- features_long %>%
+      group_by(Feature) %>%
+      summarise(pvalue = summary(aov(Value ~ MaxCluster))[[1]][["Pr(>F)"]][1], .groups = "drop")
+    
+    sig_features <- feature_pvals %>%
+      filter(pvalue < pval_threshold) %>%
+      pull(Feature)
+    
+    features_long <- features_long %>%
+      filter(Feature %in% sig_features)
+  }
+  
+  features_summary <- features_long %>%
+    dplyr::group_by(Feature, MaxCluster) %>%
+    dplyr::summarise(mean = mean(Value), .groups = "drop")
+  
+  p <- ggplot(features_summary, aes(x = MaxCluster, y = mean, group = Feature, color = Feature)) +
+    geom_line(size = 1) +
+    geom_point(size = 2) +
+    theme_bw() +
+    labs(
+      x = "Cluster",
+      y = "Mean feature value",
+      title = file_title
+    ) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  return(p)
+}
 
+```
 
+Features evolution across megaclusters
+```{r}
+plot_features_across_clusters(df_density, deconv_cbsx_lm22, file_title = "CBSX_LM22 deconvolution across megaclusters density")
+plot_features_across_clusters(df_entropy, deconv_cbsx_lm22, file_title = "CBSX_LM22 deconvolution across megaclusters entropy")
 
+plot_features_across_clusters(df_density, chemokines_score, file_title = "GSVA Chemokines score across megaclusters density")
+plot_features_across_clusters(df_entropy, chemokines_score, file_title = "GSVA Chemokines score across megaclusters entropy")
+
+plot_features_across_clusters(df_density, t(counts.norm.chemokines), file_title = "Chemokines score across megaclusters density", filter_significant = TRUE)
+plot_features_across_clusters(df_entropy, t(counts.norm.chemokines), file_title = "Chemokines score across megaclusters entropy", filter_significant = TRUE)
+```
 
 
 
