@@ -601,10 +601,82 @@ plot_features_across_clusters <- function(data_groups, features_df, file_title, 
 
 ```
 
+Weighted features
+```{r}
+plot_features_across_clusters <- function(data_groups, features_df, file_title, filter_significant = FALSE, pval_threshold = 0.05) {
+  
+  # Ensure sample names exist
+  data_groups <- data_groups %>%
+    as.data.frame() %>%
+    dplyr::mutate(Sample = rownames(.))
+  
+  features_df <- as.data.frame(scale(features_df, center = TRUE, scale = TRUE))
+
+  features_df <- features_df %>%
+    as.data.frame() %>%
+    dplyr::mutate(Sample = rownames(.))
+  
+  # Convert both to long format
+  memberships_long <- data_groups %>%
+    tidyr::pivot_longer(cols = -Sample, names_to = "Cluster", values_to = "Weight")
+  
+  features_long <- features_df %>%
+    tidyr::pivot_longer(cols = -Sample, names_to = "Feature", values_to = "Value")
+  
+  # Merge to associate each sample's feature value with its cluster weights
+  combined_long <- dplyr::left_join(memberships_long, features_long, by = "Sample")
+  
+  # Compute weighted mean per feature per cluster
+  features_summary <- combined_long %>%
+    dplyr::group_by(Feature, Cluster) %>%
+    dplyr::summarise(
+      weighted_mean = sum(Value * Weight, na.rm = TRUE) / sum(Weight, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  # Optionally filter features by weighted ANOVA significance
+  if (filter_significant) {
+    feature_pvals <- combined_long %>%
+      group_by(Feature) %>%
+      summarise(
+        pvalue = {
+          # approximate significance using weighted linear model
+          tryCatch({
+            fit <- lm(Value ~ Cluster, weights = Weight)
+            anova(fit)$`Pr(>F)`[1]
+          }, error = function(e) NA)
+        },
+        .groups = "drop"
+      )
+    
+    sig_features <- feature_pvals %>%
+      filter(!is.na(pvalue), pvalue < pval_threshold) %>%
+      pull(Feature)
+    
+    features_summary <- features_summary %>%
+      filter(Feature %in% sig_features)
+  }
+  
+  # Plot weighted means
+  p <- ggplot(features_summary, aes(x = Cluster, y = weighted_mean, group = Feature, color = Feature)) +
+    geom_line(size = 1) +
+    geom_point(size = 2) +
+    theme_bw() +
+    labs(
+      x = "Cluster",
+      y = "Weighted mean feature value",
+      title = file_title
+    ) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  return(p)
+}
+```
+
 Features evolution across megaclusters
 ```{r}
-plot_features_across_clusters(df_density, deconv_cbsx_lm22, file_title = "CBSX_LM22 deconvolution across megaclusters density")
-plot_features_across_clusters(df_entropy, deconv_cbsx_lm22, file_title = "CBSX_LM22 deconvolution across megaclusters entropy")
+plot_features_across_clusters(df_density, deconv_cbsx_lm22, file_title = "CBSX_LM22 deconvolution across megaclusters density", filter_significant = F)
+plot_features_across_clusters(df_entropy, deconv_cbsx_lm22, file_title = "CBSX_LM22 deconvolution across megaclusters entropy", filter_significant = F)
 
 plot_features_across_clusters(df_density, chemokines_score, file_title = "GSVA Chemokines score across megaclusters density")
 plot_features_across_clusters(df_entropy, chemokines_score, file_title = "GSVA Chemokines score across megaclusters entropy")
