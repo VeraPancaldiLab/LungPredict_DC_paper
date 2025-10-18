@@ -1,0 +1,100 @@
+---
+title: "Signature projection"
+author: "Marcelo Hurtado"
+date: "2025-08-12"
+output: html_document
+---
+
+Load libraries
+```{r}
+library(CellTFusion)
+library(dplyr)
+library(tibble)
+library(ggplot2)
+source("src/utils.R")
+set.seed(123)
+```
+
+Load data
+```{r}
+counts = read.delim("~/Documents/LungPredict_late_stage/Data/Captier/TIPIT_RNA_TPM_134.txt")
+clinical = read.delim("~/Documents/LungPredict_late_stage/Data/Captier/TIPIT_reponse_134.txt")
+```
+
+Processed data
+```{r}
+counts = counts %>%
+  dplyr::select(-GeneID) %>%
+  dplyr::distinct(gene_name, .keep_all = T) %>%
+  tibble::column_to_rownames("gene_name")
+
+clinical = clinical %>%
+  dplyr::mutate(Batch = as.numeric(counts[1,])) %>%
+  tibble::column_to_rownames("patient_ID")
+  
+counts = counts[-1,rownames(clinical)]
+```
+
+Add treatment
+```{r}
+treatment = read.csv("~/Documents/LungPredict_late_stage/Data/Captier/clinical_targets.csv", row.names = 1) 
+treatment = treatment[rownames(treatment)%in%rownames(clinical),]
+all.equal(rownames(treatment), rownames(clinical))
+clinical = clinical %>%
+  dplyr::mutate(Treatment = treatment$chemotherapy) %>%
+  dplyr::filter(Treatment == 0)
+counts = counts[,colnames(counts)%in%rownames(clinical)]
+```
+
+Log normalized
+```{r}
+counts.norm.log = log(counts + 1)
+```
+
+Gene sets
+```{r}
+genesets = readRDS("../output/group_marker_genesets.rds")
+tfs = scale(compute.TFs.activity(counts.norm.log))
+sig_scores = compute.pathway.activity(t(tfs), gene_sets = genesets)[[2]]
+patient_group <- apply(sig_scores, 1, function(x) names(which.max(x)))
+clinical$group = patient_group
+```
+
+Compute survival analysis
+```{r}
+res_clusters = compute.survival.analysis(clinical, "months")
+```
+
+#####################################
+
+Only chemotherapy treated in LP
+```{r}
+counts_LP_chemo = read.csv("~/Documents/LungPredict_late_stage/Data/Gobbini/Raw_files/counts_raw.csv", row.names = 1)
+clinical_LP_chemo = read.csv("~/Documents/LungPredict_late_stage/Data/Gobbini/Raw_files/clinical_data_clean.csv") %>%
+  dplyr::filter(N_Raw_matrice_Bulk %in% colnames(counts_LP_chemo)) %>%
+  tibble::column_to_rownames("N_Raw_matrice_Bulk") %>%
+  dplyr::filter(Treatment == "CT") %>%
+  dplyr::filter(!is.na(PFS) & !is.na(PFS_event))
+
+counts_LP_chemo = counts_LP_chemo[,rownames(clinical_LP_chemo)] #Order samples on counts based on clinical data
+```
+
+Log normalized
+```{r}
+counts_LP_chemo.norm.log = log(counts_LP_chemo + 1)
+```
+
+Gene sets
+```{r}
+genesets = readRDS("group_marker_genesets.rds")
+tfs = scale(compute.TFs.activity(counts_LP_chemo.norm.log))
+sig_scores = compute.pathway.activity(t(tfs), gene_sets = genesets)[[2]]
+patient_group <- apply(sig_scores, 1, function(x) names(which.max(x)))
+clinical_LP_chemo$group = patient_group
+```
+
+Survival analysis
+```{r}
+res_clusters = compute.survival.by.groups(clinical_LP_chemo, "months")
+```
+

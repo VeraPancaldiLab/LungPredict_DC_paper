@@ -1,0 +1,259 @@
+---
+title: "Cell densities analysis"
+author: "Marcelo Hurtado"
+date: "2025-05-23"
+output: html_document
+---
+
+Load libraries
+```{r}
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+```
+
+Load data
+```{r}
+load("../input/Spatial_densities.RData")
+traitData = read.csv("../input/raw_files/clinical_data_clean.csv") %>%
+  dplyr::filter(AN_clean %in% rownames(data_spatial$Stroma)) #Subset to only patients with clinical data
+
+### Replace '+' with 'plus' to avoid mismatches and change to a numeric matrix
+data_spatial <- lapply(data_spatial, function(x) {
+  colnames(x) <- gsub("\\+", "_plus", colnames(x))
+  x <- as.matrix(x)                     
+  storage.mode(x) <- "numeric"       
+  return(x)
+})
+```
+
+Figure 1: CD8 densities across patients
+
+Cells barplots
+```{r}
+for(tissue in names(data_spatial)){
+  data = data_spatial[[tissue]] 
+  for(cells in colnames(data)){
+    data = data %>%
+      data.frame() %>%
+      dplyr::mutate(cell_type = data[,cells])
+    
+    print(ggplot(data, aes(x = rownames(data), y = cell_type)) +
+      geom_col(fill = "lightblue", color = "darkblue") +
+      labs(title = paste0(cells," density per patient - ", tissue),
+           x = "Patient",
+           y = paste0(cells, " density")) +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)))
+    
+    data$cell_type = NULL 
+  }
+}
+```
+
+Stacked barplot with cell densities
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# cells colors
+my_cols <- c(
+  "CD8_plus"           = "red",
+  "Tumor_cells_plus"   = "blue",
+  "Mature_DC_plus"     = "green3",
+  "Pneumocyte_plus"    = "purple",
+  "cDC1_plus"          = "orange",
+  "pDC_plus"           = "cyan",
+  "cDC2_plus"          = "magenta"
+)
+
+for (tissue in names(data_spatial)) {
+  data <- data_spatial[[tissue]] %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column(var = "Patient")
+  
+  data_long <- data %>%
+    pivot_longer(-Patient, names_to = "Cell_Type", values_to = "Density")
+  
+  data_long = data_long %>%
+    dplyr::filter(Cell_Type != "Pneumocyte_plus")
+  
+  print(
+    ggplot(data_long, aes(x = Patient, y = Density, fill = Cell_Type)) +
+      geom_col(width = 0.7) +
+      scale_fill_manual(values = my_cols) +
+      coord_flip() +  # Flip axes to make bars horizontal (vertical layout by patient)
+      labs(title = paste0("Stacked cell-type density per patient – ", tissue),
+           x = "Patient", y = "Cell-type density") +
+      theme_minimal() +
+      theme(
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        legend.position = "right"
+      )
+  )
+}
+```
+
+Cell densities comparing Stroma vs Tumor
+```{r}
+data_spatial$Stroma = data_spatial$Stroma %>%
+  data.frame() %>%
+  dplyr::mutate(Tissue = "Stroma") 
+
+data_spatial$Tumor = data_spatial$Tumor %>%
+  data.frame() %>%
+  dplyr::mutate(Tissue = "Tumor") 
+
+combined_df <- bind_rows(data_spatial$Stroma, data_spatial$Tumor)
+
+for (cells in colnames(combined_df)) {
+  if(cells == "Tissue") next
+  
+  combined_df = combined_df %>%
+    dplyr::mutate(cell_type = combined_df[,cells])
+  
+  # Plot boxplots with p-value annotation
+  p <- ggplot(combined_df, aes(x = Tissue, y = cell_type, fill = Tissue)) +
+    geom_boxplot(alpha = 0.7, outlier.shape = NA) +
+    geom_jitter(width = 0.2, alpha = 0.6, color = "black", size = 1) +
+    ggpubr::stat_compare_means(method = "wilcox.test",
+                      comparisons = list(c("Stroma", "Tumor")),
+                      label = "p.signif",
+                      label.y.npc = "top") +
+    labs(title = paste0(cells, " densities in Stroma vs Tumor"),
+         x = "Tissue",
+         y = "Log10 cell densities") +
+    theme_minimal(base_size = 14) +
+    scale_fill_manual(values = c("Stroma" = "darkblue", "Tumor" = "darkturquoise")) +
+    scale_y_log10() + 
+    theme(
+      plot.title = element_text(hjust = 0.5, face = "bold"),
+      axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = 0.5)
+    )
+  
+  print(p)
+  
+  combined_df$cell_type <- NULL
+}
+
+
+data_spatial$Stroma$Tissue = NULL
+data_spatial$Tumor$Tissue = NULL
+```
+
+Cell densities comparing responders vs non-responders
+```{r}
+res = list()
+traits = c("all", "mts", "node", "primary")
+contador = 1
+
+for (i in traits) {
+  # Prepare results dataframe
+  results <- data.frame()
+  
+  #setdiff(names(data_spatial), "Total")
+  for (tissue in names(data_spatial)){
+    
+    if(i == "all"){
+      data_sub = data_spatial[[tissue]] %>%
+        data.frame() %>%
+        dplyr::mutate(Trait = factor(traitData$R.NR))    
+    }else if(i == "mts"){
+      data_sub = data_spatial[[tissue]] %>%
+        data.frame() %>%
+        dplyr::mutate(Trait = factor(traitData$R.NR),
+                      Site = traitData$Site_biopsie) %>%
+        dplyr::filter(Site == i) 
+    }else if(i == "node"){
+      data_sub = data_spatial[[tissue]] %>%
+        data.frame() %>%
+        dplyr::mutate(Trait = factor(traitData$R.NR),
+                      Site = traitData$Site_biopsie) %>%
+        dplyr::filter(Site == i) 
+    }else if(i == "primary"){
+      data_sub = data_spatial[[tissue]] %>%
+        data.frame() %>%
+        dplyr::mutate(Trait = factor(traitData$R.NR),
+                      Site = traitData$Site_biopsie) %>%
+        dplyr::filter(Site == i) 
+    }
+  
+    for (cells in colnames(data_sub)) {
+      if(cells %in% c("Trait","Site", "Tumor_cells_plus")) next
+      
+      data_sub = data_sub %>%
+        dplyr::mutate(cell_type = data_sub[,cells])
+            
+      # Run Wilcoxon test
+      test <- wilcox.test(data_sub[,cells] ~ data_sub$Trait, exact = FALSE)
+
+      # Collect results
+      results <- rbind(results, data.frame(
+        Tissue = tissue,
+        Cell_type = cells,
+        p_value = test$p.value
+      ))
+      
+      data_sub$cell_type = NULL
+    }
+  }
+  
+  # Adjust p-values for multiple testing if needed
+  results$p_adj <- p.adjust(results$p_value, method = "BH")
+  
+  # Create label column for plot
+  results$label <- paste0("p = ", signif(results$p_value, 3))
+  #results$label <- paste0("OR = ", signif(results$OR, 2), ", p = ", signif(results$p_value, 3))
+
+  results$feature = paste0(results$Tissue, "_", results$Cell_type)
+  
+  results = results %>%
+    dplyr::filter(Cell_type != "Pneumocyte_plus",
+                 (Tissue == "Tumor" & Cell_type %in% c("CD8_plus", "cDC2_plus")) |
+                 (Tissue == "Stroma" & Cell_type %in% c("pDC_plus", "cDC1_plus", "cDC2_plus", "CD8_plus")))
+  
+  res[[contador]] = results
+  names(res)[contador] = i
+  contador = contador + 1
+}
+```
+
+Lollipop graph
+```{r}
+for (i in names(res)) {
+  data = res[[i]]
+  
+  data <- data %>%
+    arrange(p_value) %>%
+    mutate(feature_label = ifelse(p_value < 0.05,
+                                  paste0("**", as.character(feature), "**"),
+                                  as.character(feature)),
+           feature_label = factor(feature_label, levels = feature_label))
+
+  
+  # Plot
+  print(ggplot(data, aes(x = feature_label, y = p_value)) +
+    geom_segment(aes(x = feature_label, xend = feature_label, y = max(p_value), yend = p_value),
+                 color = "skyblue", size = 1.5) +
+    geom_point(color = "darkblue", size = 6) +  # larger dot
+    scale_y_reverse() +  # most significant at top
+    labs(
+      title = paste0("Lollipop graph for cell densities (R vs NR) - ", i),
+      x = "Cell type",
+      y = "p-value"
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      axis.text.y = ggtext::element_markdown(size = 10),  # enable bold via markdown
+      plot.title = element_text(face = "bold", size = 11)
+    ) +
+    coord_flip())
+}
+```
+Compute survival analysis
+```{r}
+res_stroma = compute.survival.by.features(data_spatial$Stroma, traitData, "PFS", "PFS_event", "months", p.value = 0.05, thres = 0.5, max_factors = 1)
+```
