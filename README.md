@@ -4,6 +4,13 @@ Dendritic cells spatial organization shapes tumor microenvironment and impact im
 
 Mains objective: we investigated the spatial organization of DC subsets in NSCLC and how this organization is able to shape the surrounding tumor microenvironment and transcription factor signaling, driving the immunotherapy response.
 
+<p align="center">
+<img src="framework.png?raw=true"/>
+</p>
+<p align="center">
+<em>Figure 1. A schematic overview of the paper analysis</em>
+</p>
+
 Scripts
 - Spatial_densities: Preprocessing of spatial data 
 - Cell_densities_analysis: Analysis of DC subsets densities across response information and survival
