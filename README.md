@@ -1,9 +1,12 @@
 # LUNG PREDICT : Stade 4 NSCLC (Non-Small Cell Lung Cancer)
 
-Hypothesis : Dendritic cell subsets spatial organization drives the Immunotherapy response to pendrolizumab (anti-PD1) in NSCLC (Non-Small Cell Lung Cancer)
-cancer patients.
+Dendritic cells spatial organization shapes tumor microenvironment and impact immunotherapy response in Non-Small-Cell lung cancer
 
-Mains objective :
-1) Decipher the spatial organization of DC subsets in Non-Small Cell Lung Cancer.
-2) Correlate this spatial organization with the response to anti-PD1.
-3) Discovering a new biomarker of clinical response
+Mains objective: we investigated the spatial organization of DC subsets in NSCLC and how this organization is able to shape the surrounding tumor microenvironment and transcription factor signaling, driving the immunotherapy response.
+
+Scripts
+- Spatial_densities: Preprocessing of spatial data 
+- Cell_densities_analysis: Analysis of DC subsets densities across response information and survival
+- Megaclusters_analysis: Analysis of megaclusters density and CD8 enrichment across responders and patient stratification 
+- RNAseq_analysis: Bulk RNAseq analysis of patient groups to characterize them with transcriptomic features (pathways, TFs modules, immunescores, chemokines, deconvolution)
+- Signature_projection: Validation of TF signature in independent cohort
