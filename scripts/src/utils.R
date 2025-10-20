@@ -349,3 +349,68 @@ compute.survival.by.features = function(features, survival.data, PFS, PFS_event,
   }
   
 }
+
+
+cell.groups.wilcox.test <- function(cell.groups, coldata, trait, pval = 0.05) {
+  sig = c()
+  coldata[, trait] = as.factor(coldata[, trait])
+  
+  if (length(unique(coldata[, trait])) != 2) {
+    stop("Wilcoxon test requires a binary trait (exactly two groups).")
+  }
+  
+  for (j in 1:ncol(cell.groups[[1]])) {
+    data = data.frame(Value = cell.groups[[1]][, j], Trait = coldata[, trait])
+    
+    # Perform Wilcoxon rank-sum test
+    res.test <- stats::wilcox.test(Value ~ Trait, data = data, exact = FALSE)
+    
+    if (round(res.test$p.value, 5) <= pval) {
+      cat("Significant p-value after Wilcoxon test for", colnames(cell.groups[[1]])[j], "\n")
+      
+      # Save boxplot
+      pdf(paste0("Results/Wilcoxon_", trait, "_", colnames(cell.groups[[1]])[j], ".pdf"),
+          width = 12, height = 9)
+      print(
+        ggplot(data, aes(x = Trait, y = Value, fill = Trait)) +
+          geom_boxplot(outlier.shape = NA, alpha = 0.7, color = "gray30") +  # hide boxplot outliers
+          geom_jitter(width = 0.15, size = 2.5, alpha = 0.8, color = "black") +  # show all sample points
+          stat_summary(fun = median, geom = "point", shape = 23,
+                       size = 3, fill = "white") +
+          scale_fill_brewer(palette = "Set2") +
+          labs(
+            title = paste0("Wilcoxon Test - ", colnames(cell.groups[[1]])[j]),
+            subtitle = paste0("P-value: ", round(res.test$p.value, 5)),
+            x = paste0("Clinical trait: ", trait),
+            y = "Cell group score"
+          ) +
+          theme_minimal(base_size = 16) +
+          theme(
+            axis.text.x = element_text(size = 20),
+            axis.title.x = element_text(size = 20),
+            legend.title = element_text(size = 15),
+            legend.text = element_text(size = 12),
+            axis.title.y = element_text(size = 20, angle = 90),
+            plot.title = element_text(size = 20),
+            plot.subtitle = element_text(size = 15, face = "bold")
+          ) +
+          scale_fill_discrete(name = trait)
+      )
+      dev.off()
+      
+      sig = c(sig, j)
+    }
+  }
+  
+  # Collect significant cell groups
+  if (length(sig) == 0) {
+    message("No significant cell groups (p-value < ", pval, ") after Wilcoxon test.")
+    return(invisible(NULL))
+  } else {
+    cell.groups.sig = list()
+    cell.groups.sig[[1]] = cell.groups[[1]][, sig, drop = FALSE]
+    cell.groups.sig[[2]] = cell.groups[[2]][sig]
+    cell.groups.sig[[3]] = cell.groups[[3]][sig]
+    return(cell.groups.sig)
+  }
+}

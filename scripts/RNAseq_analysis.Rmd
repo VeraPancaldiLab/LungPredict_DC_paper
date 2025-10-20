@@ -319,3 +319,14 @@ plot_features_weighted_across_clusters(df_density, t(counts.norm.chemokines), fi
 plot_features_weighted_across_clusters(df_entropy, t(counts.norm.chemokines), file_title = "Chemokines score across megaclusters entropy", filter_significant = TRUE)
 ```
 
+CellTFusion
+```{r}
+cell_groups = construct_cell_groups(counts.norm.log, tfs, deconv, network, deconv_subgroups, coldata[,"R.NR", drop = F], 
+                                    pval = 0.05, trait = "R.NR", positive = "R")
+```
+
+Wilcoxon test of cell groups
+```{r}
+wilcox = cell.groups.wilcox.test(cell_groups, coldata, "R.NR", pval = 0.05)
+```
+
