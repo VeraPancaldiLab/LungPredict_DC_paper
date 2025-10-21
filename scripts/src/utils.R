@@ -414,3 +414,59 @@ cell.groups.wilcox.test <- function(cell.groups, coldata, trait, pval = 0.05) {
     return(cell.groups.sig)
   }
 }
+
+cell.groups.anova.test = function(cell.groups, coldata, trait, pval = 0.05){
+  sig = c()
+  coldata[, trait] = as.factor(coldata[, trait])
+  
+  for (j in 1:ncol(cell.groups[[1]])) {
+    data = data.frame(Value = cell.groups[[1]][, j], Trait = coldata[, trait])
+    res.aov <- rstatix::anova_test(data = data, dv = Value, between = Trait)
+    
+    if (res.aov$p < pval) {
+      cat("Significant p-value after ANOVA for", colnames(cell.groups[[1]])[j], "\n")
+      
+      # Tukey post-hoc test + position for significance annotation
+      pwc <- data %>% 
+        rstatix::tukey_hsd(Value ~ Trait) %>% 
+        rstatix::add_xy_position(x = "Trait")
+      
+      # Generate annotated boxplot (same style as first function)
+      pdf(paste0("Results/ANOVA_", trait, "_", colnames(cell.groups[[1]])[j], ".pdf"), 
+          width = 12, height = 9)
+      print(
+        ggpubr::ggboxplot(data, x = "Trait", y = "Value", fill = "Trait", add = "jitter") +
+          ggpubr::stat_pvalue_manual(pwc, hide.ns = TRUE) +
+          labs(
+            title = "One-way ANOVA with Tukey HSD",
+            subtitle = rstatix::get_test_label(res.aov, detailed = TRUE),
+            caption = rstatix::get_pwc_label(pwc),
+            x = paste0("Clinical trait: ", trait),
+            y = paste0("Values for ", colnames(cell.groups[[1]])[j])
+          ) +
+          theme(
+            axis.text.x = element_text(size = 20, angle = 0),
+            axis.title.x = element_text(size = 20),
+            legend.position = "none",
+            axis.title.y = element_text(size = 20, angle = 90),
+            plot.title = element_text(size = 20),
+            plot.subtitle = element_text(size = 15, face = "bold")
+          )
+      )
+      dev.off()
+      
+      sig = c(sig, j)
+    }
+  }
+  
+  cell.groups.sig = list()
+  if (length(sig) == 0) {
+    message("No significant cell groups (p-value < ", pval, ") after ANOVA test")
+    return(NULL)
+  } else {
+    cell.groups.sig[[1]] = cell.groups[[1]][, sig, drop = FALSE]
+    cell.groups.sig[[2]] = cell.groups[[2]][sig]
+    cell.groups.sig[[3]] = cell.groups[[3]][sig]
+    return(cell.groups.sig)
+  }
+}

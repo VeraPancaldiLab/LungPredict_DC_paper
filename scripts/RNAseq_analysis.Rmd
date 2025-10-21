@@ -320,13 +320,15 @@ plot_features_weighted_across_clusters(df_entropy, t(counts.norm.chemokines), fi
 ```
 
 CellTFusion
-```{r}
-cell_groups = construct_cell_groups(counts.norm.log, tfs, deconv, network, deconv_subgroups, coldata[,"R.NR", drop = F], 
-                                    pval = 0.05, trait = "R.NR", positive = "R")
+```{r} 
+cell_groups = construct_cell_groups(counts.norm.log, tfs, deconv, network, deconv_subgroups, coldata[,"Groups", drop = F], pval = 0.05)
 ```
 
 Wilcoxon test of cell groups
 ```{r}
-wilcox = cell.groups.wilcox.test(cell_groups, coldata, "R.NR", pval = 0.05)
+coldata_subset = coldata %>% dplyr::filter(Groups %in% c(2,4))
+coldata_subset$Groups <- droplevels(coldata_subset$Groups)
+cell_groups[[1]] = cell_groups[[1]][rownames(cell_groups[[1]])%in%rownames(coldata_subset),]
+anova = cell.groups.anova.test(cell_groups, coldata_subset, "Groups", pval = 0.05)
 ```
 
