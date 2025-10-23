@@ -255,5 +255,7 @@ for (i in names(res)) {
 ```
 Compute survival analysis
 ```{r}
-res_stroma = compute.survival.by.features(data_spatial$Stroma, traitData, "PFS", "PFS_event", "months", p.value = 0.05, thres = 0.5, max_factors = 1)
+source("src/utils.R")
+res_stroma = compute.survival.analysis(features = data_spatial$Stroma, survival.data = traitData, group_column = NULL,
+                                       "PFS", "PFS_event", file_name = "Stroma", p.value = 0.05, thres = 0.5)
 ```

@@ -244,44 +244,118 @@ diff_analysis = function(RNA.counts.normalized, feature, test, ref, pval = 0.05,
   
 }
 
-compute.survival.by.groups = function(survival.data, PFS, PFS_event, time_unit, file_name) {
-  library(survival)
+compute.survival.analysis = function(survival.data, PFS, PFS_event, file_name = NULL, 
+                                     features = NULL, p.value = 0.05, thres = 0.5, group_column = NULL) {
+  require(survival)
   
   # Prepare the data for survival analysis
   data_for_model <- data.frame("time" = survival.data[,PFS],
                                "status" = survival.data[,PFS_event]) 
   
-  data_for_model$coxHL <- paste0("Group_", survival.data$Groups)
+  ###### CASE 1: Use predefined groups (like patient clusters or risk groups)
+  if (!is.null(group_column)) {
+    
+    # Use an existing column in survival.data to define patient groups
+    data_for_model$coxHL <- paste0("Group_", survival.data[[group_column]])
+    
+    # Fit Kaplan–Meier survival curves across groups
+    km_fit <- survival::survfit(survival::Surv(time, status) ~ coxHL, data = data_for_model)
+    
+    # Log-rank test for survival difference among groups
+    pval <- survminer::surv_pvalue(km_fit, data = data_for_model)$pval 
+    
+    # Extract group names for plot legend
+    strata_names <- gsub("coxHL=", "", names(km_fit$strata)) 
+    legend_labels <- strata_names
+    legend.labs = legend_labels
+    
+    pdf(paste0("Results/SurvPlot_", group_column, "_", file_name), width = 10, height = 5, onefile = FALSE)
+    print(survminer::ggsurvplot(km_fit,
+                                data = data_for_model,
+                                size = 1,
+                                conf.int.style = "step",
+                                pval = TRUE,
+                                risk.table = TRUE,
+                                risk.table.col = "strata",
+                                legend.labs = legend.labs,
+                                risk.table.height = 0.3,
+                                ggtheme = theme_grey(),
+                                title = paste0("Cox PH for Surv(time, status) ~ ", group_column),
+                                xlab = "Time to death/recurrence/progression"
+    ))
+    dev.off()
+    
+  } 
   
-  # Perform Kaplan-Meier based on coxHL
-  km_fit <- survival::survfit(survival::Surv(time, status) ~ coxHL, data = data_for_model)
-  
-  pval <- survminer::surv_pvalue(km_fit, data = data_for_model)$pval #Performs log-rank test to see whether both survival curves are significantly different
-  
-  ### Set colors of each curve with the correct order 
-  strata_names <- gsub("coxHL=", "", names(km_fit$strata)) 
-  legend_labels <- strata_names
-  legend.labs = legend_labels
-  
-  pdf(paste0("Results/SurvPlot_", file_name), width = 10, height = 5, onefile = FALSE)
-  print(survminer::ggsurvplot(km_fit,
-                              data = data_for_model,
-                              size = 1,
-                              conf.int.style = "step",
-                              pval = TRUE,
-                              risk.table = TRUE,
-                              risk.table.col = "strata",
-                              legend.labs = legend.labs,
-                              risk.table.height = 0.3,
-                              ggtheme = theme_grey(),
-                              title = paste0("Cox PH for Surv(time, status) ~ patient groups"),
-                              xlab = paste0("Time to death/recurrence/progression (", time_unit, ")")
-  ))
-  dev.off()
+  ###### CASE 2: Use features to define high/low groups automatically
+  else if (!is.null(features)) {
+    significant_combinations <- list() # To store significant feature combinations
+    contador = 1
+    
+    n_features = ncol(features)
+    
+    for (n in 1:n_features) {
+      
+      # Create a formula 
+      formula <- as.formula(paste("Surv(time, status) ~", colnames(features)[n]))
+      
+      # Prepare the dataset containing survival time, event status, and feature values
+      data_for_model <- data.frame("time" = survival.data[,PFS],
+                                   "status" = survival.data[,PFS_event]) 
+      
+      # Compute the quantile cutoff used to split the feature into high vs. low groups
+      quantiles <- quantile(features[,n], thres) 
+      
+      # Divide patients into high and low groups based on the quantile threshold of the feature
+      data_for_model$coxHL <- factor(ifelse(features[,n] >= quantiles, paste0('High_', colnames(features)[n]), paste0("Low_", colnames(features)[n]))) 
+      
+      # Fit Kaplan–Meier survival curves for the high and low feature groups
+      km_fit <- survival::survfit(survival::Surv(time, status) ~ coxHL, data = data_for_model)
+      
+      #  #Performs log-rank test to see whether both survival curves are significantly different between the groups
+      pval <- survminer::surv_pvalue(km_fit, data = data_for_model)$pval
+      
+      if (!is.na(pval) && pval < p.value) {
+        
+        significant_combinations[[contador]] <- formula
+        names(significant_combinations)[contador] = colnames(features)[n]
+        
+        ### Set colors of each curve with the correct order 
+        strata_names <- gsub("coxHL=", "", names(km_fit$strata)) 
+        legend_labels <- strata_names
+        legend.labs = legend_labels
+        
+        pdf(paste0("Results/SurvPlot_", names(significant_combinations)[contador], "_", file_name), width = 10, height = 5, onefile = FALSE)
+        print(survminer::ggsurvplot(km_fit,
+                                    data = data_for_model,
+                                    size = 1,
+                                    palette = c("#E7B800", "#2E9FDF"),
+                                    conf.int.style = "step",
+                                    pval = TRUE,
+                                    risk.table = TRUE,
+                                    risk.table.col = "strata",
+                                    legend.labs = legend.labs,
+                                    risk.table.height = 0.3,
+                                    ggtheme = theme_grey(),
+                                    title = paste0("Cox PH for Surv(time, status) ~", colnames(features)[n]),
+                                    xlab = "Time to death/recurrence/progression"))
+        dev.off()
+        contador = contador + 1
+      }
+    }
+    
+    if (length(significant_combinations) == 0) {
+      print("No significant combinations found.")
+    } else {
+      return(significant_combinations)
+    }
+    
+  } else {
+    stop("Please provide either 'group_column' for predefined groups or 'features' for feature-based analysis.")
+  }
 }
 
-compute.survival.by.features = function(features, survival.data, PFS, PFS_event, time_unit, p.value = 0.05, thres = 0.5, max_factors = Inf) {
-  library(survival)
+compute.survival.models = function(features, survival.data, PFS, PFS_event, file_name = NULL, p.value = 0.05, thres = 0.5, max_factors = Inf) {
   n_features <- ncol(features)
   significant_combinations <- list() # To store significant feature combinations
   
@@ -298,29 +372,28 @@ compute.survival.by.features = function(features, survival.data, PFS, PFS_event,
       data_for_model <- data.frame("time" = survival.data[,PFS],
                                    "status" = survival.data[,PFS_event]) 
       
-      quantiles <- quantile(features[,comb], thres) 
+      data_for_model = cbind(data_for_model, features[,comb, drop=F])
+      
+      # Fit the Cox PH model with the combination of features (cox PH take into account covariates and measure the impact of each variable in the survival time)
+      cox <- rms::cph(formula, data = data_for_model)
+      data_for_model$CoxPredictors <- cox$linear.predictors #linear predictors is the risk score for each individual in the dataset
+      
+      # Compute the quantile cutoff used to split between high vs. low risk groups
+      quantiles <- quantile(data_for_model$CoxPredictors, thres) 
       
       # Binarize the Cox model output to draw two KM lines (linear predictors are used to stratify between high-risk and low-risk groups)
-      data_for_model$coxHL <- factor(ifelse(features[,comb] >= quantiles, paste0('High_', colnames(features)[comb]), paste0("Low_", colnames(features)[comb]))) 
-      
-      feature_name <- colnames(features)[comb]
+      data_for_model$coxHL <- ifelse(cox$linear.predictors >= quantiles, 'High', "Low") 
       
       # Perform Kaplan-Meier based on coxHL
-      km_fit <- survival::survfit(survival::Surv(time, status) ~ coxHL, data = data_for_model)
+      km_fit <- survival::survfit(Surv(time, status) ~ coxHL, data = data_for_model)
       
       pval <- survminer::surv_pvalue(km_fit, data = data_for_model)$pval #Performs log-rank test to see whether both survival curves are significantly different
       
       if (!is.na(pval) && pval < p.value) {
-        
         significant_combinations[[contador]] <- formula
-        names(significant_combinations)[contador] = paste0("Formula_", contador)
+        names(significant_combinations)[contador] = paste(colnames(features)[comb], collapse = " + ")
         
-        ### Set colors of each curve with the correct order 
-        strata_names <- gsub("coxHL=", "", names(km_fit$strata)) 
-        legend_labels <- strata_names
-        legend.labs = legend_labels
-        
-        pdf(paste0("Results/SurvPlot_", names(significant_combinations)[contador]), width = 10, height = 5, onefile = FALSE)
+        pdf(paste0("Results/SurvPlot_", names(significant_combinations)[contador], "_", file_name), width = 10, height = 5, onefile = FALSE)
         print(survminer::ggsurvplot(km_fit,
                                     data = data_for_model,
                                     size = 1,
@@ -329,13 +402,12 @@ compute.survival.by.features = function(features, survival.data, PFS, PFS_event,
                                     pval = TRUE,
                                     risk.table = TRUE,
                                     risk.table.col = "strata",
-                                    legend.labs = legend.labs,
+                                    legend.labs = c("High", "Low"),
                                     risk.table.height = 0.3,
                                     ggtheme = theme_grey(),
-                                    title = paste0("Cox PH for ", paste("Surv(time, status) ~", paste(colnames(features)[comb], collapse = " + "))),
-                                    subtitle = direction,
-                                    xlab = paste0("Time to death/recurrence/progression (", time_unit, ")")
-        ))
+                                    title = paste0("Cox PH for ", names(significant_combinations)[contador]),
+                                    xlab = "Time to death/recurrence/progression")
+        )
         dev.off()
         contador = contador + 1
       }
@@ -349,7 +421,6 @@ compute.survival.by.features = function(features, survival.data, PFS, PFS_event,
   }
   
 }
-
 
 cell.groups.wilcox.test <- function(cell.groups, coldata, trait, pval = 0.05) {
   sig = c()
