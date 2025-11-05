@@ -22,7 +22,7 @@ entropy_clusters = read.csv("../input/raw_files/table_entropy_mega_cluster.csv")
   dplyr::filter(Spatial_cluster != "cDC1+") 
 density_clusters = read.csv("../input/raw_files/Table_mega_cluster_mm2.csv")
 
-# Spatial data
+# DC densities data
 load("../input/Spatial_densities.RData")
 
 ### Replace '+' with 'plus' to avoid mismatches and change to a numeric matrix
@@ -33,7 +33,8 @@ data_spatial <- lapply(data_spatial, function(x) {
   return(x)
 })
 
-counts = read.csv("../input/raw_files/counts_raw.csv", row.names = 1) 
+# Bulk RNAseq and clinical data
+counts = read.csv("../input/raw_files/counts_raw.csv", row.names = 1) ## 116 patients in total
 coldata = read.csv("../input/raw_files/clinical_data_clean.csv") %>%
   dplyr::filter(N_Raw_matrice_Bulk %in% colnames(counts)) %>%
   tibble::column_to_rownames("N_Raw_matrice_Bulk")
@@ -43,7 +44,7 @@ counts = counts[,rownames(coldata)] #Order samples on counts based on clinical d
 all.equal(rownames(coldata), colnames(counts)) #Verify samples from counts are in the correct order
 ```
 
-Match samples with RNAseq
+Match samples with spatial and RNAseq (60 patients)
 ```{r}
 # Entropy matrix
 df_entropy = entropy_clusters %>%
@@ -88,41 +89,21 @@ data_spatial <- lapply(data_spatial, function(df) {
   return(df)
 })
 
-all.equal(rownames(data_spatial[[1]]), rownames(coldata))
-all.equal(rownames(data_spatial[[1]]), colnames(counts))
+all.equal(rownames(data_spatial[[1]]), rownames(coldata)) #Verify samples from clinical match the order from spatial
+all.equal(rownames(data_spatial[[1]]), colnames(counts)) #Verify samples from counts match the order from spatial
 ```
 
-Normalize counts
+Normalize counts (60 patients)
 ```{r}
 counts.TPM.norm = ADImpute::NormalizeTPM(counts, log = F)
 counts.norm.log = ADImpute::NormalizeTPM(counts, log = T)
 ```
 
-DCs-markers expression vs cell densities
+DCs-markers expression vs cell densities (60 patients)
 ```{r}
-cDC1_markers = c("CLEC9A", "XCR1", "HDAC9", "S100B", "IDO1", "CADM1", "CLNK", "CPVL", "WDFY4", "C1orf54", "DNASE1L3", "CPNE3", "CCSER1")
-cDC2_markers = c("CLEC10A", "CD1C", "FCER1A", "FCGR2B", "CD1E", "AREG", "GPAT3") 
-mature_DC_markers =c("LAMP3", "BIRC3", "CCR7", "MARCKS", "MARCKSL1", "FSCN1")
-pDC_markers = c("PACSIN1", "GZMB", "IRF4", "C12orf75", "LILRA4", "IL3RA", "CLEC4C", "SPIB", "IGKC", "IRF7", "JCHAIN", "PTGDS")
-
-markers_expression_cDC1 = counts.norm.log[rownames(counts.norm.log)%in%cDC1_markers,]
-markers_expression_cDC2 = counts.norm.log[rownames(counts.norm.log)%in%cDC2_markers,]
-markers_expression_DC_markers = counts.norm.log[rownames(counts.norm.log)%in%mature_DC_markers,]
-markers_expression_pDC = counts.norm.log[rownames(counts.norm.log)%in%pDC_markers,]
-
 dc_subtypes = c("cDC1_plus", "cDC2_plus", "Mature_DC_plus", "pDC_plus")
-markers_expression = list(markers_expression_cDC1, markers_expression_cDC2, markers_expression_DC_markers, markers_expression_pDC)
-
 data_spatial = do.call(cbind, data_spatial)
 
-for (j in 1:length(dc_subtypes)){
-  spatial_data = data_spatial[,grep(dc_subtypes[j], colnames(data_spatial)), drop = F]
-  CellTFusion::compute.modules.relationship(spatial_data, t(markers_expression[[j]]), file_name = dc_subtypes[j], width = 10, height = 7)
-}
-```
-
-Gene signatures across patients using response information
-```{r}
 # Create gene set list
 gene_sets <- list(
   Signature_cDC1_plus = c("CLNK", "XCR1", "WDFY4", "CLEC9A", "DNASE1L3"),
@@ -131,74 +112,111 @@ gene_sets <- list(
   Signature_pDC_plus = c("CLEC4C",  "LILRA4", "PACSIN1", "SPIB")
 )
 
-dc_signatures_score = CellTFusion::compute.pathway.activity(counts.norm.log, gene_sets = gene_sets)[[2]]
-CellTFusion::compute.modules.relationship(dc_signatures_score, data_spatial[,grep(paste0(paste0("Total.", dc_subtypes), collapse = "|"), colnames(data_spatial)), drop = F], 
+markers_all = unlist(unname(gene_sets))
+
+# Calulate DCs signature scores
+dc_signatures_score = compute.pathway.activity(counts.norm.log, gene_sets = gene_sets)[[2]]
+
+## DC signatures - DC densities
+compute.modules.relationship(dc_signatures_score, data_spatial[,grep(paste0(paste0("Total.", dc_subtypes), collapse = "|"), 
+                                                                     colnames(data_spatial)), drop = F], 
                              file_name = "DC_signatures-densities", width = 8, height = 7)
-CellTFusion::compute.metada.association(dc_signatures_score, coldata[,"R.NR",drop=F], width = 8, height = 15, pval = 1)
+
+## Markers expression - DC densities
+compute.modules.relationship(data_spatial[,grep(paste0(paste0("Total.", dc_subtypes), collapse = "|"), 
+                                                colnames(data_spatial)), drop = F], 
+                             t(counts.norm.log[rownames(counts.norm.log)%in%markers_all,]),
+                             file_name = "DC_markers-densities", width = 10, height = 7)
+
+## DC signatures from RNAseq across response
+compute.metadata.association(dc_signatures_score, coldata[,"R.NR",drop=F], file.name = "DC_signatures_Response", width = 8, height = 15, pval = 1)
 ```
 
-Cell-type deconvolution
+Cell-type deconvolution 
 ```{r}
 # deconv = multideconv::compute.deconvolution(counts.norm, normalized = F, doParallel = T, workers = 2, file_name = "Deconvolution_Gobbini",
 #                                             credentials.mail = "XXXXX", credentials.token = "XXX")
 deconv = read.csv("../input/Deconvolution_Gobbini.csv", row.names = 1) %>%
-  dplyr::filter(rownames(.)%in%colnames(counts))
+  dplyr::filter(rownames(.)%in%colnames(counts)) #60 patients
 ```
 
 ##################################################################################################################
 
-Analysis across patient clusters
+Analysis across patient clusters 
 ```{r}
 set.seed(123)
 ```
 
-Add patient groups obtained from megaclusters densities
+Add patient groups obtained from megaclusters densities (58 patients) --> Remember there were 2 outliers
 ```{r}
 load("../output/Patients_groups.RData")
 patient_groups = patient_groups[rownames(patient_groups)%in%coldata$AN,]
 coldata = coldata[coldata$AN%in%rownames(patient_groups),]
 patient_groups = patient_groups[coldata$AN,]
-all.equal(rownames(patient_groups), coldata$AN)
+all.equal(rownames(patient_groups), coldata$AN) ## Rownames of coldata and patient_groups are in AN
 coldata = coldata %>%
-  dplyr::mutate(Groups = factor(patient_groups$Groups))
+  dplyr::mutate(Groups = factor(ifelse(patient_groups$Groups == 4, 3, patient_groups$Groups))) ## Rename group 
+table(coldata$Groups)
 ```
 
-Match patients in groups from spatial with RNAseq bulk 
+Match patients in groups from spatial with RNAseq bulk (58 patients)
 ```{r}
 counts = counts[,colnames(counts)%in%rownames(coldata)]
 df_entropy = df_entropy[rownames(df_entropy)%in%rownames(coldata),]
 df_density = df_density[rownames(df_density)%in%rownames(coldata),]
 ```
 
-Normalize counts
+Normalize counts (58 patients)
 ```{r}
 counts.TPM.norm = ADImpute::NormalizeTPM(counts, log = F)
 counts.norm.log = ADImpute::NormalizeTPM(counts, log = T)
 ```
 
-Deconvolution subgroups
-```{r}
-deconv = deconv[rownames(deconv)%in%rownames(coldata),]
-deconv_subgroups = multideconv::compute.deconvolution.analysis(deconvolution = deconv, 
-                                                               corr = 0.85, 
-                                                               seed = 123, 
-                                                               file_name = "Gobbini", 
-                                                               cells_extra = c("tpDC", "tDC1", "tDC2", "tDC3", "Plasma", "Tcells"),
-                                                               return = TRUE) 
-```
-
-TF analysis
+TF analysis (58 patients)
 ```{r}
 tfs = compute.TFs.activity(counts.norm.log)
-network = compute.WTCNA(tfs, corr_mod = 0.8, clustering.method = "ward.D2", return = T) 
+#network = compute.WTCNA(tfs, corr_mod = 0.8, clustering.method = "ward.D2", return = T) 
+
+#### Create TF network 
+tfs_modules = read.csv("../Results/TFs_modules.csv")
+
+tfs_list <- setNames(
+  strsplit(tfs_modules$Composition, ","),
+  tfs_modules$TFs.module
+)
+
+tf_to_color <- unlist(lapply(names(tfs_list), function(color) {
+  setNames(rep(color, length(tfs_list[[color]])), trimws(tfs_list[[color]]))
+}))
+
+tf_colors <- unname(tf_to_color[colnames(tfs)])
+
+MEList = WGCNA::moduleEigengenes(tfs, colors = tf_colors, scale = F)
+MEs = MEList$eigengenes
+MEs = WGCNA::orderMEs(MEs)
+colnames(MEs) <- gsub("ME", "", colnames(MEs))
+
+network = list()
+network[["TFs module matrix"]] = MEs
+network[["TFs colors"]] = tf_colors
+network[["TFs per module"]] = tf_to_color
+
+#### TF modules - patient clusters
+compute.metadata.association(network[[1]], coldata[,"Groups", drop = F], pval = 5, file.name = "TF_modules_Groups")
+
+#### TF modules - megaclusters density and entropy
+compute.modules.relationship(network[[1]], df_entropy, "Entropy-TFs_Modules", width = 8)
+compute.modules.relationship(network[[1]], df_density, "Density-TFs_Modules", width = 8)
 ```
 
-Pathway analysis
+Pathway analysis (58 patients)
 ```{r}
 pathways = compute.pathway.activity(counts.norm.log)
+#TF modules - pathways
+compute.modules.relationship(network[[1]], pathways, "Pathways_Progeny-TFs_Modules", width = 10)
 ```
 
-Chemokines scores
+Chemokines scores (58 patients)
 ```{r}
 chemokines = c("CCL1", "CCL11", "CCL13", "CCL16", "CCL17", "CCL19", "CCL2", "CCL20", "CCL21", "CCL22", "CCL23", "CCL24","CCL25", 
                "CCL26", "CCL27", "CCL4", "CCL7", "CCL8", "CX3CL1", "CXCL1","CXCL11", "CXCL12", "CXCL16", "CXCL3", "CXCL5", "CXCL6", 
@@ -207,22 +225,28 @@ chemokines = c("CCL1", "CCL11", "CCL13", "CCL16", "CCL17", "CCL19", "CCL2", "CCL
 
 geneset = list(chemokines)
 
-chemokines_score = CellTFusion::compute.pathway.activity(counts.norm.log, gene_sets = geneset)[[2]]
+chemokines_score = compute.pathway.activity(counts.norm.log, gene_sets = geneset)[[2]]
 colnames(chemokines_score)[[1]] = "chemokines_score"
 
 counts.norm.chemokines = counts.norm.log[rownames(counts.norm.log)%in%chemokines,]
-CellTFusion::compute.modules.relationship(t(counts.norm.chemokines), df_entropy, "Entropy-Chemokines", width = 8, height = 15)
-CellTFusion::compute.modules.relationship(t(counts.norm.chemokines), df_density, "Density-Chemokines", width = 8, height = 15)
+
+#### Chemokines - megaclusters density and entropy
+compute.modules.relationship(t(counts.norm.chemokines), df_entropy, "Entropy-Chemokines", width = 8, height = 15)
+compute.modules.relationship(t(counts.norm.chemokines), df_density, "Density-Chemokines", width = 8, height = 15)
+
+#### Chemokines signatures - Patient groups
+compute.metadata.association(chemokines_score, coldata[,"Groups", drop = F], pval = 0.05, file.name = "Chemokines_signature_Groups")
+
+#### Chemokines - Patient groups
+compute.metadata.association(t(counts.norm.log[rownames(counts.norm.log)%in%chemokines,]), 
+                             coldata[,"Groups", drop = F], pval = 0.05, file.name = "Chemokines_Groups")
 ```
 
-Interferon genes
+Interferon genes (58 patients)
 ```{r}
 # Type I interferons (alpha and beta)
-IFN_I <- c(
-  "IFNA1", "IFNA2", "IFNA4", "IFNA5", "IFNA6", "IFNA7", "IFNA8",
-  "IFNA10", "IFNA13", "IFNA14", "IFNA16", "IFNA17", "IFNA21",
-  "IFNB1"
-)
+IFN_I <- c("IFNA1", "IFNA2", "IFNA4", "IFNA5", "IFNA6", "IFNA7", "IFNA8",
+           "IFNA10", "IFNA13", "IFNA14", "IFNA16", "IFNA17", "IFNA21", "IFNB1")
 
 # Type II interferon (gamma)
 IFN_II <- c("IFNG")
@@ -230,66 +254,57 @@ IFN_II <- c("IFNG")
 # Type III interferons (lambda)
 IFN_III <- c("IFNL1", "IFNL2", "IFNL3", "IFNL4")
 
-CellTFusion::compute.metada.association(t(counts.norm.log[rownames(counts.norm.log)%in%c(IFN_I, IFN_II, IFN_III),]), coldata[,"Groups", drop = F], pval = 0.05)
+compute.metadata.association(t(counts.norm.log[rownames(counts.norm.log)%in%c(IFN_I, IFN_II, IFN_III),]), 
+                             coldata[,"Groups", drop = F], pval = 0.05, file.name = "Interferons_groups")
 ```
 
-Immunoscores
+Immunoscores (58 patients)
 ```{r}
 source("src/immunoscores.R")
 immunescores = compute_gold_standards(counts.norm.log)
+
+#### Immunescores - patient clusters
+compute.metadata.association(immunescores, coldata[,"Groups", drop = F], file.name = "Immunescores_Groups", pval = 0.05)
 ```
 
-Deconvolution
+Cell type deconvolution (58 patients)
 ```{r}
-### CBSX-LM22
-deconv_cbsx_lm22 = deconv[,grep("CBSX_LM22", colnames(deconv))]
-CellTFusion::compute.metada.association(deconv_cbsx_lm22, coldata[,"Groups", drop = F], pval = 5)
-CellTFusion::compute.modules.relationship(deconv_cbsx_lm22, df_entropy, "Entropy-Deconv_LM22", width = 8, height = 12)
-CellTFusion::compute.modules.relationship(deconv_cbsx_lm22, df_density, "Density-Deconv_LM22", width = 8, height = 12)
+#Filter to only patients within clusters
+deconv = deconv[rownames(deconv)%in%rownames(coldata),]
+
+# Filter to only LM22 signature
+deconv_cbsx_lm22 = deconv[,grep("CBSX_LM22", colnames(deconv))] 
+
+### Deconvolution - Patients groups
+compute.metadata.association(deconv_cbsx_lm22, coldata[,"Groups", drop = F], pval = 0.05, file.name = "Deconvolution_Groups")
+
+### Deconvolution - Megaclusters density
+compute.modules.relationship(deconv_cbsx_lm22, df_density, "Density-Deconv_LM22", width = 8, height = 12)
+
+### Deconvolution - Megaclusters entropy
+compute.modules.relationship(deconv_cbsx_lm22, df_entropy, "Entropy-Deconv_LM22", width = 8, height = 12)
 ```
 
-TFs modules - pathways
+Differential active TFs across patient groups (58 patients)
 ```{r}
-CellTFusion::compute.modules.relationship(network[[1]], pathways, "Pathways_Progeny-TFs_Modules", width = 10)
-CellTFusion::compute.metada.association(network[[1]], coldata[,"Groups", drop = F], pval = 5)
-```
-
-Chemokines 
-```{r}
-CellTFusion::compute.metada.association(chemokines_score, coldata[,"Groups", drop = F], pval = 5)
-CellTFusion::compute.metada.association(t(counts.norm.log[rownames(counts.norm.log)%in%chemokines,]), coldata[,"Groups", drop = F], pval = 0.05)
-```
-
-Immunescores
-```{r}
-CellTFusion::compute.metada.association(immunescores, coldata[,"Groups", drop = F], pval = 5)
-```
-
-TF-modules - megaclusters
-```{r}
-CellTFusion::compute.modules.relationship(network[[1]], df_entropy, "Entropy-TFs_Modules", width = 8)
-CellTFusion::compute.modules.relationship(network[[1]], df_density, "Density-TFs_Modules", width = 8)
-```
-
-Differential active TFs across patient groups
-```{r}
+library(viper)
 coldata$group_1 <- factor(ifelse(coldata$Groups == 1, 1, "rest"))
 res_1 = diff_analysis(counts.norm.log, coldata$group_1, "1", "rest", file.name = "Diff_1vsrest")
 
 coldata$group_2 <- factor(ifelse(coldata$Groups == 2, 2, "rest"))
 res_2 = diff_analysis(counts.norm.log, coldata$group_2, "2", "rest", file.name = "Diff_2vsrest")
 
-coldata$group_4 <- factor(ifelse(coldata$Groups == 4, 4, "rest"))
-res_4 = diff_analysis(counts.norm.log, coldata$group_4, "4", "rest", file.name = "Diff_4vsrest")
+coldata$group_3 <- factor(ifelse(coldata$Groups == 3, 3, "rest"))
+res_3 = diff_analysis(counts.norm.log, coldata$group_3, "3", "rest", file.name = "Diff_3vsrest")
 
 gene_sets <- list(
   Group1_markers = res_1$TFs_UP,
   Group2_markers = res_2$TFs_UP,
-  Group4_markers = res_4$TFs_UP
+  Group3_markers = res_3$TFs_UP
 )
 ```
 
-TFs signatures scores
+TFs signatures scores (58 patients)
 ```{r}
 tfs = scale(compute.TFs.activity(counts.norm.log))
 deg_signatures_score = compute.pathway.activity(t(tfs), gene_sets = gene_sets)[[2]]
@@ -297,38 +312,13 @@ patient_group <- apply(deg_signatures_score, 1, function(x) names(which.max(x)))
 coldata$deg_group = patient_group
 ```
 
-Survival analysis
+Survival analysis (58 patients)
 ```{r}
-res_clusters = compute.survival.by.groups(coldata, "months")
+res_clusters = compute.survival.analysis(coldata, "PFS", "PFS_event", file_name = "Patient_groups", p.value = 0.05, group_column = "deg_group")
 ```
 
 Save genesets
 ```{r}
 saveRDS(gene_sets, "../output/group_marker_genesets.rds")
-```
-
-Features evolution across megaclusters
-```{r}
-plot_features_weighted_across_clusters(df_density, deconv_cbsx_lm22, file_title = "CBSX_LM22 deconvolution across megaclusters density", filter_significant = F)
-plot_features_weighted_across_clusters(df_entropy, deconv_cbsx_lm22, file_title = "CBSX_LM22 deconvolution across megaclusters entropy", filter_significant = F)
-
-plot_features_weighted_across_clusters(df_density, chemokines_score, file_title = "GSVA Chemokines score across megaclusters density")
-plot_features_weighted_across_clusters(df_entropy, chemokines_score, file_title = "GSVA Chemokines score across megaclusters entropy")
-
-plot_features_weighted_across_clusters(df_density, t(counts.norm.chemokines), file_title = "Chemokines score across megaclusters density", filter_significant = TRUE)
-plot_features_weighted_across_clusters(df_entropy, t(counts.norm.chemokines), file_title = "Chemokines score across megaclusters entropy", filter_significant = TRUE)
-```
-
-CellTFusion
-```{r} 
-cell_groups = construct_cell_groups(counts.norm.log, tfs, deconv, network, deconv_subgroups, coldata[,"Groups", drop = F], pval = 0.05)
-```
-
-Wilcoxon test of cell groups
-```{r}
-coldata_subset = coldata %>% dplyr::filter(Groups %in% c(2,4))
-coldata_subset$Groups <- droplevels(coldata_subset$Groups)
-cell_groups[[1]] = cell_groups[[1]][rownames(cell_groups[[1]])%in%rownames(coldata_subset),]
-anova = cell.groups.anova.test(cell_groups, coldata_subset, "Groups", pval = 0.05)
 ```
 

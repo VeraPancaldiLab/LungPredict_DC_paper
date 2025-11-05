@@ -10,9 +10,10 @@ Load libraries
 library(dplyr)
 library(ggplot2)
 library(tidyr)
+source("src/utils.R")
 ```
 
-Load data
+Load data (68 patients)
 ```{r}
 load("../input/Spatial_densities.RData")
 traitData = read.csv("../input/raw_files/clinical_data_clean.csv") %>%
@@ -27,9 +28,9 @@ data_spatial <- lapply(data_spatial, function(x) {
 })
 ```
 
-Figure 1: CD8 densities across patients
+CD8 densities across patients  (68 patients)
 
-Cells barplots
+Cells barplots 
 ```{r}
 for(tissue in names(data_spatial)){
   data = data_spatial[[tissue]] 
@@ -134,6 +135,16 @@ for (cells in colnames(combined_df)) {
     )
   
   print(p)
+  
+  # Save as SVG
+  ggsave(
+    filename = paste0(cells, "densities_Stroma_vs_Tumor.svg"),
+    plot = p,
+    width = 6,
+    height = 5,
+    units = "in",
+    device = "svg"
+  )
   
   combined_df$cell_type <- NULL
 }
@@ -253,9 +264,9 @@ for (i in names(res)) {
     coord_flip())
 }
 ```
-Compute survival analysis
+
+Compute survival analysis (68 patients)
 ```{r}
-source("src/utils.R")
 res_stroma = compute.survival.analysis(features = data_spatial$Stroma, survival.data = traitData, group_column = NULL,
                                        "PFS", "PFS_event", file_name = "Stroma", p.value = 0.05, thres = 0.5)
 ```

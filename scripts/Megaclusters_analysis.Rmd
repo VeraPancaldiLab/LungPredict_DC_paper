@@ -21,7 +21,7 @@ entropy_clusters = read.csv("../input/raw_files/table_entropy_mega_cluster.csv")
   dplyr::filter(Spatial_cluster != "cDC1+") 
 ```
 
-Matrices with entropy and density values per patient
+Matrices with entropy and density values per patient (68 patients)
 ```{r}
 ### Entropy values
 df_entropy = entropy_clusters %>%
@@ -51,9 +51,9 @@ df_entropy = df_entropy %>%
 #write.csv(df_density, file = "../input/MegaClusters_density.csv")
 ```
 
-CD8 enrichment in megaclusters
+CD8 enrichment in megaclusters (68 patients)
 ```{r}
-ggplot(entropy_clusters, aes(x = Spatial_cluster, y = Value_entropy, fill = Spatial_cluster)) +
+p <- ggplot(entropy_clusters, aes(x = Spatial_cluster, y = Value_entropy, fill = Spatial_cluster)) +
   geom_violin(trim = FALSE, alpha = 0.7, scale = "width") +
   geom_jitter(width = 0.2, alpha = 0.5, color = "black") +
   scale_y_log10() +
@@ -62,11 +62,24 @@ ggplot(entropy_clusters, aes(x = Spatial_cluster, y = Value_entropy, fill = Spat
        y = "Entropy") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Print the plot to view in R
+print(p)
+
+# Save as SVG
+ggsave(
+  filename = "CD8_enrichment_megaclusters.svg",
+  plot = p,
+  width = 8,
+  height = 6,
+  units = "in",
+  device = "svg"
+)
 ```
 
-CD8 enrichment per megacluster comparing response information
+CD8 enrichment per megacluster comparing response information (68 patients)
 ```{r}
-ggplot(entropy_clusters, aes(x = Spatial_cluster, y = Value_entropy, fill = R.NR)) +
+p <- ggplot(entropy_clusters, aes(x = Spatial_cluster, y = Value_entropy, fill = R.NR)) +
   geom_boxplot(alpha = 0.7, position = position_dodge(width = 0.8), outlier.shape = NA) +
   geom_jitter(alpha = 0.5, color = "black", 
               position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.8)) +
@@ -87,11 +100,24 @@ ggplot(entropy_clusters, aes(x = Spatial_cluster, y = Value_entropy, fill = R.NR
   theme(
     axis.text.x = element_text(angle = 45, hjust = 1)
   )
+
+# Show plot in R
+print(p)
+
+# Save as SVG
+ggsave(
+  filename = "CD8_enrichment_megaclusters_by_Response.svg",
+  plot = p,
+  width = 8,
+  height = 6,
+  units = "in",
+  device = "svg"
+)
 ```
 
-Megaclusters density per megacluster comparing response
+Megaclusters density per megacluster comparing response (68 patients)
 ```{r}
-ggplot(mega_clusters, aes(x = Cluster_type, y = Nombre_cluster_type_mm2, fill = R.NR)) +
+p = ggplot(mega_clusters, aes(x = Cluster_type, y = Nombre_cluster_type_mm2, fill = R.NR)) +
   geom_boxplot(alpha = 0.7, position = position_dodge(width = 0.8), outlier.shape = NA) +
   geom_jitter(alpha = 0.5, color = "black", 
               position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.8)) +
@@ -112,9 +138,21 @@ ggplot(mega_clusters, aes(x = Cluster_type, y = Nombre_cluster_type_mm2, fill = 
   theme(
     axis.text.x = element_text(angle = 45, hjust = 1)
   )
+
+print(p)
+
+# Save as SVG
+ggsave(
+  filename = "Megaclusters_density_by_Response.svg",
+  plot = p,
+  width = 8,
+  height = 6,
+  units = "in",
+  device = "svg"
+)
 ```
 
-Heatmap for megaclusters
+Heatmap for megaclusters (68 patients)
 ```{r}
 ## Heatmap annotations
 ann_colors <- ComplexHeatmap::HeatmapAnnotation(
@@ -148,24 +186,41 @@ ht1 = ComplexHeatmap::Heatmap(t(scale(df_density)),
                                     legend_heigh = unit(12, "cm"), title_gp = grid::gpar(fontsize = 12)))
 
 
-pdf("Results/Density_megaclusters_clusters", width = 20, height = 10)
-ComplexHeatmap::draw(ht1, show_heatmap_legend = T, heatmap_legend_side = "left", annotation_legend_side = 'left')
+svg("Results/Density_megaclusters_clusters.svg", width = 20, height = 10)
+
+ComplexHeatmap::draw(
+  ht1,
+  show_heatmap_legend = TRUE,
+  heatmap_legend_side = "left",
+  annotation_legend_side = "left"
+)
+
 dev.off()
 ```
 
-Cluster patient groups based on megacluster density
+Cluster patient groups based on megacluster density (68 patients)
 ```{r}
 hc = hclust(dist(scale(df_density)), method = "ward.D2")
 k = 5
 clusters <- cutree(hc, k = k)
-plot(hc, main = "Patients groups", xlab = "", sub = "", cex = 0.8)
+
+# Save dendrogram as SVG
+svg("Results/Patients_groups_dendrogram.svg", width = 10, height = 6)
+
+plot(hc,
+     main = "Patients groups",
+     xlab = "",
+     sub = "",
+     cex = 0.8)
 rect.hclust(hc, k = k, border = 2:4)
+
+dev.off()
 
 coldata = traitData %>%
   dplyr::mutate(Groups = clusters)
 ```
 
-Remove outliers (patient groups with 1 sample)
+Remove 2 outliers (patient groups with 1 sample) - (66 patients)
 ```{r}
 coldata = coldata %>%
   dplyr::filter(Groups %in% c(1,2,4))
@@ -173,7 +228,7 @@ coldata = coldata %>%
 df_density = df_density[rownames(df_density)%in%rownames(coldata),] ## Subset to only patients within the patient groups
 ```
 
-PCA of megacluster densities
+PCA of megacluster densities (66 patients)
 ```{r}
 # Ensure Groups is in the data
 df_plot <- as.data.frame(df_density)
@@ -195,7 +250,7 @@ autoplot(pca_result, data = df_plot,
   labs(colour = "Patient groups")
 ```
 
-Megaclusters densities split by patient clusters
+Megaclusters densities split by patient clusters (66 patients)
 ```{r}
 ## Heatmap annotations
 ann_colors <- ComplexHeatmap::HeatmapAnnotation(
@@ -209,7 +264,7 @@ ann_colors <- ComplexHeatmap::HeatmapAnnotation(
                                  legend_heigh = unit(12, "cm"), title_gp = grid::gpar(fontsize = 12))
 )
 
-ht1 = ComplexHeatmap::Heatmap(t(scale(df_density_proportions)), 
+ht1 = ComplexHeatmap::Heatmap(t(scale(df_density)), 
         border = T, cluster_columns = F, column_split = coldata$Groups,
         top_annotation = ann_colors, column_gap = unit(8, "mm"), 
         name = "Megaclusters density", clustering_method_rows = "ward.D2", 
@@ -224,17 +279,25 @@ ht1 = ComplexHeatmap::Heatmap(t(scale(df_density_proportions)),
                                     legend_heigh = unit(12, "cm"), title_gp = grid::gpar(fontsize = 12)))
 
 
-pdf("Results/Density_megaclusters_split_by_clusters", width = 20, height = 10)
-ComplexHeatmap::draw(ht1, show_heatmap_legend = T, heatmap_legend_side = "left", annotation_legend_side = 'left')
+svg("Results/Density_megaclusters_split_by_clusters.svg", width = 20, height = 10)
+
+ComplexHeatmap::draw(
+  ht1,
+  show_heatmap_legend = TRUE,
+  heatmap_legend_side = "left",
+  annotation_legend_side = "left"
+)
+
 dev.off()
 ```
 
-Survival analysis
+Survival analysis (66 patients)
 ```{r}
-res_clusters = compute.survival.by.groups(scale(df_density), coldata, "months", p.value = 1)
+res_clusters = compute.survival.analysis(features = df_density, survival.data = coldata, group_column = "Groups",
+                                       "PFS", "PFS_event", file_name = "Patient_clusters", p.value = 0.05, thres = 0.5)
 ```
 
-Save patient group info
+Save patient group info (66 patients)
 ```{r}
 save(coldata, file = "Patients_groups.RData")
 ```

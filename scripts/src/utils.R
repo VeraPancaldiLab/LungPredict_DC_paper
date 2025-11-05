@@ -206,6 +206,20 @@ minMax <- function(x) {
 
 diff_analysis = function(RNA.counts.normalized, feature, test, ref, pval = 0.05, file.name){
   
+  net = decoupleR::get_collectri(organism = 'human', split_complexes = F) #Get universe  
+  
+  collectri2viper_regulons <- function(df) {
+    regulon_list <- split(df, df$source)
+    regulons <- lapply(regulon_list, function(regulon) {
+      tfmode <- stats::setNames(regulon$mor, regulon$target)
+      list(tfmode = tfmode, likelihood = rep(1, length(tfmode)))
+    })
+    
+    return(regulons)
+  }
+  
+  net_regulons = collectri2viper_regulons(net)
+
   ####TFs differential active 
   # Generating test and ref data
   test_i <- which(feature == test)
@@ -227,8 +241,9 @@ diff_analysis = function(RNA.counts.normalized, feature, test, ref, pval = 0.05,
   mra <- msviper(signature, net_regulons, dnull, verbose = F, minsize = 5)
 
   # Plot DiffActive TFs
-  pdf(paste0("Results/Differential_TFs_", file.name, ".pdf"))
-  print(plot(mra, mrs=15, cex=1, include = c("expression","activity")))
+  svg(paste0("Results/Differential_TFs_", file.name, ".svg"),
+      width = 10, height = 8)
+  print(plot(mra, mrs = 15, cex = 1, include = c("expression", "activity")))
   dev.off()
   
   tfs_da = mra$es$p.value
@@ -269,8 +284,7 @@ compute.survival.analysis = function(survival.data, PFS, PFS_event, file_name = 
     legend_labels <- strata_names
     legend.labs = legend_labels
     
-    pdf(paste0("Results/SurvPlot_", group_column, "_", file_name), width = 10, height = 5, onefile = FALSE)
-    print(survminer::ggsurvplot(km_fit,
+    p = survminer::ggsurvplot(km_fit,
                                 data = data_for_model,
                                 size = 1,
                                 conf.int.style = "step",
@@ -282,9 +296,19 @@ compute.survival.analysis = function(survival.data, PFS, PFS_event, file_name = 
                                 ggtheme = theme_grey(),
                                 title = paste0("Cox PH for Surv(time, status) ~ ", group_column),
                                 xlab = "Time to death/recurrence/progression"
-    ))
-    dev.off()
+    )
     
+    p$table <- p$table + theme(legend.position = "none")
+    combined <- gridExtra::arrangeGrob(p$plot, p$table, ncol = 1, heights = c(2/3, 1/3))
+    ggsave(
+      filename = paste0("Results/SurvPlot_", group_column, "_", file_name, ".svg"),
+      plot = combined,
+      width = 10,
+      height = 5,
+      units = "in",
+      device = "svg"
+    )
+
   } 
   
   ###### CASE 2: Use features to define high/low groups automatically
@@ -325,8 +349,7 @@ compute.survival.analysis = function(survival.data, PFS, PFS_event, file_name = 
         legend_labels <- strata_names
         legend.labs = legend_labels
         
-        pdf(paste0("Results/SurvPlot_", names(significant_combinations)[contador], "_", file_name), width = 10, height = 5, onefile = FALSE)
-        print(survminer::ggsurvplot(km_fit,
+        p = survminer::ggsurvplot(km_fit,
                                     data = data_for_model,
                                     size = 1,
                                     palette = c("#E7B800", "#2E9FDF"),
@@ -338,8 +361,19 @@ compute.survival.analysis = function(survival.data, PFS, PFS_event, file_name = 
                                     risk.table.height = 0.3,
                                     ggtheme = theme_grey(),
                                     title = paste0("Cox PH for Surv(time, status) ~", colnames(features)[n]),
-                                    xlab = "Time to death/recurrence/progression"))
-        dev.off()
+                                    xlab = "Time to death/recurrence/progression")
+        
+        p$table <- p$table + theme(legend.position = "none")
+        combined <- gridExtra::arrangeGrob(p$plot, p$table, ncol = 1, heights = c(2/3, 1/3))
+        ggsave(
+          filename = paste0("Results/SurvPlot_", names(significant_combinations)[contador], "_", file_name, ".svg"),
+          plot = combined,
+          width = 10,
+          height = 5,
+          units = "in",
+          device = "svg"
+        )
+
         contador = contador + 1
       }
     }
