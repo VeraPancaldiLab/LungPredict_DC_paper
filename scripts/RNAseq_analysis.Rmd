@@ -178,7 +178,7 @@ tfs = compute.TFs.activity(counts.norm.log)
 #network = compute.WTCNA(tfs, corr_mod = 0.8, clustering.method = "ward.D2", return = T) 
 
 #### Create TF network 
-tfs_modules = read.csv("../Results/TFs_modules.csv")
+tfs_modules = read.csv("Results/TFs_modules.csv")
 
 tfs_list <- setNames(
   strsplit(tfs_modules$Composition, ","),
@@ -235,11 +235,11 @@ compute.modules.relationship(t(counts.norm.chemokines), df_entropy, "Entropy-Che
 compute.modules.relationship(t(counts.norm.chemokines), df_density, "Density-Chemokines", width = 8, height = 15)
 
 #### Chemokines signatures - Patient groups
-compute.metadata.association(chemokines_score, coldata[,"Groups", drop = F], pval = 0.05, file.name = "Chemokines_signature_Groups")
+compute.metadata.association(chemokines_score, coldata[,"Groups", drop = F], pval = 1, file.name = "Chemokines_signature_Groups")
 
 #### Chemokines - Patient groups
 compute.metadata.association(t(counts.norm.log[rownames(counts.norm.log)%in%chemokines,]), 
-                             coldata[,"Groups", drop = F], pval = 0.05, file.name = "Chemokines_Groups")
+                             coldata[,"Groups", drop = F], pval = 1, file.name = "Chemokines_Groups")
 ```
 
 Interferon genes (58 patients)
@@ -255,7 +255,7 @@ IFN_II <- c("IFNG")
 IFN_III <- c("IFNL1", "IFNL2", "IFNL3", "IFNL4")
 
 compute.metadata.association(t(counts.norm.log[rownames(counts.norm.log)%in%c(IFN_I, IFN_II, IFN_III),]), 
-                             coldata[,"Groups", drop = F], pval = 0.05, file.name = "Interferons_groups")
+                             coldata[,"Groups", drop = F], pval = 1, file.name = "Interferons_groups")
 ```
 
 Immunoscores (58 patients)
@@ -264,7 +264,7 @@ source("src/immunoscores.R")
 immunescores = compute_gold_standards(counts.norm.log)
 
 #### Immunescores - patient clusters
-compute.metadata.association(immunescores, coldata[,"Groups", drop = F], file.name = "Immunescores_Groups", pval = 0.05)
+compute.metadata.association(immunescores, coldata[,"Groups", drop = F], file.name = "Immunescores_Groups", pval = 1)
 ```
 
 Cell type deconvolution (58 patients)
@@ -276,7 +276,7 @@ deconv = deconv[rownames(deconv)%in%rownames(coldata),]
 deconv_cbsx_lm22 = deconv[,grep("CBSX_LM22", colnames(deconv))] 
 
 ### Deconvolution - Patients groups
-compute.metadata.association(deconv_cbsx_lm22, coldata[,"Groups", drop = F], pval = 0.05, file.name = "Deconvolution_Groups")
+compute.metadata.association(deconv_cbsx_lm22, coldata[,"Groups", drop = F], pval = 1, file.name = "Deconvolution_Groups")
 
 ### Deconvolution - Megaclusters density
 compute.modules.relationship(deconv_cbsx_lm22, df_density, "Density-Deconv_LM22", width = 8, height = 12)

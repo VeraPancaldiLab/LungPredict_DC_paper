@@ -29,6 +29,7 @@ Mains objective: we investigated the spatial organization of DC subsets in NSCLC
 **output**: Output files
 - `Patients_groups.RData`: Patients groups assignations 
 - `group_marker_genesets.rds`: TFs sets fromm differential analysis across groups
+- `TFs_modules.csv`: TFs module composition
   
 **Scripts**: Codes used for analysis.
 - `Spatial_densities`: Preprocessing of spatial data 
@@ -37,7 +38,9 @@ Mains objective: we investigated the spatial organization of DC subsets in NSCLC
 - `RNAseq_analysis`: Bulk RNAseq analysis of patient groups to characterize them with transcriptomic features (pathways, TFs modules, immunescores, chemokines, deconvolution)
 - `Signature_projection`: Validation of TF signature in independent cohort
   
-**Results**: Figures used in the paper.
+**Results**: All results from analysis including those used in the paper.
+
+**Figures**: Figures for the paper.
 
 ## Specifications
 Analysis was done using R version 4.3.1 with the OS Ubuntu 22.04.3 LTS.
