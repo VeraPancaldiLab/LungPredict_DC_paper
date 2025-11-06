@@ -73,3 +73,6 @@ If you are interested or have questions about the analysis done in this project,
 ## Authors
 - [Marcelo Hurtado](https://github.com/mhurtado13)
 - [Vera Pancaldi](https://github.com/VeraPancaldi)
+- Elisa Gobbini
+- Jenny Valladeau
+- Pierre Duplouye
