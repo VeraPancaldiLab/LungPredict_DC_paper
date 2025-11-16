@@ -276,6 +276,21 @@ compute.survival.analysis = function(survival.data, PFS, PFS_event, file_name = 
     # Fit Kaplan–Meier survival curves across groups
     km_fit <- survival::survfit(survival::Surv(time, status) ~ coxHL, data = data_for_model)
     
+    #median PFS 
+    medians <- survminer::surv_median(km_fit)
+    
+    median_text <- paste0(
+      paste0(medians$strata, ": mPFS = ", round(medians$median, 2), 
+             " (", round(medians$lower,2), "-", round(medians$upper, 2), ")"),
+      collapse = "\n"
+    )
+    
+    #median follow-up (reverse KM) 
+    rev_km <- survfit(Surv(time, 1 - status) ~ 1, data = data_for_model)
+    median_follow_up <- summary(rev_km)$table["median"]
+    
+    followup_text <- paste0("Median follow-up = ", round(median_follow_up, 2))
+    
     # Log-rank test for survival difference among groups
     pval <- survminer::surv_pvalue(km_fit, data = data_for_model)$pval 
     
@@ -299,6 +314,7 @@ compute.survival.analysis = function(survival.data, PFS, PFS_event, file_name = 
     )
     
     p$table <- p$table + theme(legend.position = "none")
+    
     combined <- gridExtra::arrangeGrob(p$plot, p$table, ncol = 1, heights = c(2/3, 1/3))
     ggsave(
       filename = paste0("Results/SurvPlot_", group_column, "_", file_name, ".svg"),
@@ -309,6 +325,13 @@ compute.survival.analysis = function(survival.data, PFS, PFS_event, file_name = 
       device = "svg"
     )
 
+    return(list(
+      km_plot = p,
+      median_PFS = medians,
+      p_value = pval,
+      median_follow_up = median_follow_up
+    ))
+    
   } 
   
   ###### CASE 2: Use features to define high/low groups automatically
