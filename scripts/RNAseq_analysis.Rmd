@@ -140,6 +140,11 @@ deconv = read.csv("../input/Deconvolution_Gobbini.csv", row.names = 1) %>%
   dplyr::filter(rownames(.)%in%colnames(counts)) #60 patients
 ```
 
+Survival analysis
+```{r}
+res_clusters = compute.survival.analysis(coldata, "PFS", "PFS_event", file_name = "Patient_response", p.value = 0.05, group_column = "R.NR")
+```
+
 ##################################################################################################################
 
 Analysis across patient clusters 
@@ -315,7 +320,6 @@ coldata$deg_group = patient_group
 Survival analysis (58 patients)
 ```{r}
 res_clusters = compute.survival.analysis(coldata, "PFS", "PFS_event", file_name = "Patient_groups", p.value = 0.05, group_column = "deg_group")
-res_clusters = compute.survival.analysis(coldata, "PFS", "PFS_event", file_name = "Patient_response", p.value = 0.05, group_column = "R.NR")
 ```
 
 Save genesets
