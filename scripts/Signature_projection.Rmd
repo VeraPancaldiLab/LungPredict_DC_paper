@@ -7,7 +7,7 @@ output: html_document
 
 Load libraries
 ```{r}
-library(CellTFusion)
+source("~/Documents/CellTFusion/R/CellTFusion.R")
 library(dplyr)
 library(tibble)
 library(ggplot2)
@@ -15,10 +15,16 @@ source("src/utils.R")
 set.seed(123)
 ```
 
+Load databases
+```{r}
+pathways_universe = read.csv("../output/Databases/Pathways_collection_PROGENy.csv")
+tfs_universe = read.csv("../output/Databases/TF_target_collection.csv")
+```
+
 Load data 
 ```{r}
-counts = read.delim("~/Documents/LungPredict_late_stage/Data/Captier/TIPIT_RNA_TPM_134.txt")
-clinical = read.delim("~/Documents/LungPredict_late_stage/Data/Captier/TIPIT_reponse_134.txt")
+counts = read.delim("~/Documents/LungPredict_late_stage/data/Captier/TIPIT_RNA_TPM_134.txt")
+clinical = read.delim("~/Documents/LungPredict_late_stage/data/Captier/TIPIT_reponse_134.txt")
 ```
 
 Processed data (134 patients)
@@ -42,9 +48,9 @@ counts.norm.log = log(counts + 1)
 
 Gene sets
 ```{r}
-genesets = readRDS("../output/group_marker_genesets.rds")
-tfs = scale(compute.TFs.activity(counts.norm.log))
-sig_scores = compute.pathway.activity(t(tfs), gene_sets = genesets)[[2]]
+genesets = readRDS("Results/group_marker_genesets.rds")
+tfs = compute.TFs.activity(counts.norm.log, TF.collection = "ARACNE", file.name = "CurieImmuno_ARACNE") #Network is ../output/TF_network_ARACNE.txt
+sig_scores = compute.pathway.activity(t(tfs), paths = pathways_universe, gene_sets = genesets, file.name = "CurieImmuno_ARACNE")[[2]]
 patient_group <- apply(sig_scores, 1, function(x) names(which.max(x)))
 clinical$group = patient_group
 ```

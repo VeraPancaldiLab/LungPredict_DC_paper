@@ -1,96 +1,136 @@
 ---
 title: "RNAseq analysis"
 author: "Marcelo Hurtado"
-date: "2025-05-23"
+date: "2026-01-28"
 output: html_document
 ---
 
 Load libraries
 ```{r}
-library(CellTFusion)
+source("~/Documents/CellTFusion/R/CellTFusion.R")
 library(dplyr)
 library(tibble)
+library(viper)
 library(ggplot2)
 source("src/utils.R")
 set.seed(123)
 ```
 
-Load data
+Load databases
 ```{r}
-# Megaclusters data
-entropy_clusters = read.csv("../input/raw_files/table_entropy_mega_cluster.csv") %>%
-  dplyr::filter(Spatial_cluster != "cDC1+") 
-density_clusters = read.csv("../input/raw_files/Table_mega_cluster_mm2.csv")
-
-# DC densities data
-load("../input/Spatial_densities.RData")
-
-### Replace '+' with 'plus' to avoid mismatches and change to a numeric matrix
-data_spatial <- lapply(data_spatial, function(x) {
-  colnames(x) <- gsub("\\+", "_plus", colnames(x))
-  x <- as.matrix(x)                     
-  storage.mode(x) <- "numeric"       
-  return(x)
-})
-
-# Bulk RNAseq and clinical data
-counts = read.csv("../input/raw_files/counts_raw.csv", row.names = 1) ## 116 patients in total
-coldata = read.csv("../input/raw_files/clinical_data_clean.csv") %>%
-  dplyr::filter(N_Raw_matrice_Bulk %in% colnames(counts)) %>%
-  tibble::column_to_rownames("N_Raw_matrice_Bulk")
-
-counts = counts[,rownames(coldata)] #Order samples on counts based on clinical data
-
-all.equal(rownames(coldata), colnames(counts)) #Verify samples from counts are in the correct order
+pathways_universe = read.csv("../output/Databases/Pathways_collection_PROGENy.csv")
+tfs_universe = read.csv("../output/Databases/TF_target_collection.csv")
 ```
 
-Match samples with spatial and RNAseq (60 patients)
+###################### CODE USED TO PREPROCESSED DATA FROM RAW FILES (NOT NECESSARY ANYMORE AS FILES ARE ALREADY SAVED)
+<!-- Load data -->
+<!-- ```{r} -->
+<!-- # Megaclusters data -->
+<!-- entropy_clusters = read.csv("../input/raw_files/table_entropy_mega_cluster.csv") %>% -->
+<!--   dplyr::filter(Spatial_cluster != "cDC1+")  -->
+<!-- density_clusters = read.csv("../input/raw_files/Table_mega_cluster_mm2.csv") -->
+
+<!-- # DC densities data -->
+<!-- load("../input/Spatial_densities.RData") -->
+
+<!-- ### Replace '+' with 'plus' to avoid mismatches and change to a numeric matrix -->
+<!-- data_spatial <- lapply(data_spatial, function(x) { -->
+<!--   colnames(x) <- gsub("\\+", "_plus", colnames(x)) -->
+<!--   x <- as.matrix(x)                      -->
+<!--   storage.mode(x) <- "numeric"        -->
+<!--   return(x) -->
+<!-- }) -->
+
+<!-- # Bulk RNAseq and clinical data -->
+<!-- counts = read.csv("../input/raw_files/counts_raw.csv", row.names = 1) ## 116 patients in total -->
+<!-- coldata = read.csv("../input/raw_files/clinical_data_clean.csv") %>% -->
+<!--   dplyr::filter(N_Raw_matrice_Bulk %in% colnames(counts)) %>% -->
+<!--   tibble::column_to_rownames("N_Raw_matrice_Bulk") -->
+
+<!-- counts = counts[,rownames(coldata)] #Order samples on counts based on clinical data -->
+
+<!-- all.equal(rownames(coldata), colnames(counts)) #Verify samples from counts are in the correct order -->
+<!-- ``` -->
+
+<!-- Match samples with spatial and RNAseq (60 patients) -->
+<!-- ```{r} -->
+<!-- # Entropy matrix -->
+<!-- df_entropy = entropy_clusters %>% -->
+<!--   dplyr::filter(Dispo_bluk %in% colnames(counts)) %>% -->
+<!--   dplyr::select(Dispo_bluk, Spatial_cluster, Value_entropy) %>% -->
+<!--   tidyr::pivot_wider( -->
+<!--     names_from = Spatial_cluster, -->
+<!--     values_from = Value_entropy -->
+<!--   ) %>% -->
+<!--   tibble::column_to_rownames("Dispo_bluk")  -->
+
+<!-- # Density matrix -->
+<!-- df_density = density_clusters %>% -->
+<!--   dplyr::filter(Dispo_bluk %in% colnames(counts)) %>% -->
+<!--   dplyr::select(Dispo_bluk, Cluster_type, Nombre_cluster_type_mm2) %>% -->
+<!--   tidyr::pivot_wider( -->
+<!--     names_from = Cluster_type, -->
+<!--     values_from = Nombre_cluster_type_mm2 -->
+<!--   ) %>% -->
+<!--   tibble::column_to_rownames("Dispo_bluk")  -->
+
+<!-- coldata = coldata[rownames(coldata)%in%rownames(df_entropy),] -->
+<!-- counts = counts[,colnames(counts)%in%rownames(coldata)] -->
+<!-- df_entropy = df_entropy[rownames(df_entropy) %in% colnames(counts),] -->
+<!-- df_density = df_density[rownames(df_density) %in% colnames(counts),] -->
+
+<!-- df_entropy = df_entropy[rownames(coldata),] -->
+<!-- df_density = df_density[rownames(coldata),] -->
+
+<!-- all.equal(rownames(df_entropy), colnames(counts)) -->
+<!-- all.equal(rownames(df_density), colnames(counts)) -->
+
+<!-- #Spatial data -->
+<!-- data_spatial <- lapply(data_spatial, function(df) { -->
+<!--   df <- df[rownames(df) %in% coldata$AN_clean, ] -->
+<!--   df = df[coldata$AN_clean,] #Order samples -->
+<!--   rownames(df) <- NULL -->
+<!--   df <- df %>% -->
+<!--     data.frame() %>% -->
+<!--     dplyr::mutate(Samples = rownames(coldata)) %>% -->
+<!--   tibble::column_to_rownames("Samples") -->
+<!--   return(df) -->
+<!-- }) -->
+
+<!-- all.equal(rownames(data_spatial[[1]]), rownames(coldata)) #Verify samples from clinical match the order from spatial -->
+<!-- all.equal(rownames(data_spatial[[1]]), colnames(counts)) #Verify samples from counts match the order from spatial -->
+<!-- ``` -->
+
+Load data
 ```{r}
-# Entropy matrix
-df_entropy = entropy_clusters %>%
-  dplyr::filter(Dispo_bluk %in% colnames(counts)) %>%
-  dplyr::select(Dispo_bluk, Spatial_cluster, Value_entropy) %>%
-  tidyr::pivot_wider(
-    names_from = Spatial_cluster,
-    values_from = Value_entropy
-  ) %>%
-  tibble::column_to_rownames("Dispo_bluk") 
+load("../input/Spatial_densities.RData")
+counts = read.csv("../input/Bulk_counts_raw.csv", row.names = 1)
+coldata = read.csv("../input/Bulk_clinical_raw.csv", row.names = 1)
+df_density = read.csv("../input/MegaClusters_density.csv", row.names = 1)
+df_entropy = read.csv("../input/MegaClusters_entropy.csv", row.names = 1)
+```
 
-# Density matrix
-df_density = density_clusters %>%
-  dplyr::filter(Dispo_bluk %in% colnames(counts)) %>%
-  dplyr::select(Dispo_bluk, Cluster_type, Nombre_cluster_type_mm2) %>%
-  tidyr::pivot_wider(
-    names_from = Cluster_type,
-    values_from = Nombre_cluster_type_mm2
-  ) %>%
-  tibble::column_to_rownames("Dispo_bluk") 
+Subset to RNAseq and spatial (60 patients overlap)
+```{r}
+df_density = df_density[rownames(df_density)%in%colnames(counts),]
+df_entropy = df_entropy[rownames(df_entropy)%in%colnames(counts),]
+counts = counts[,colnames(counts)%in%rownames(df_density)]
+coldata = coldata[rownames(coldata)%in% colnames(counts),]
 
-coldata = coldata[rownames(coldata)%in%rownames(df_entropy),]
-counts = counts[,colnames(counts)%in%rownames(coldata)]
-df_entropy = df_entropy[rownames(df_entropy) %in% colnames(counts),]
-df_density = df_density[rownames(df_density) %in% colnames(counts),]
+df_density = df_density[match(colnames(counts), rownames(df_density)),]
+df_entropy = df_entropy[match(colnames(counts), rownames(df_entropy)),]
 
-df_entropy = df_entropy[rownames(coldata),]
-df_density = df_density[rownames(coldata),]
+all.equal(colnames(counts), rownames(coldata))
+all.equal(colnames(counts), rownames(df_density))
+all.equal(colnames(counts), rownames(df_entropy))
 
-all.equal(rownames(df_entropy), colnames(counts))
-all.equal(rownames(df_density), colnames(counts))
-
-#Spatial data
 data_spatial <- lapply(data_spatial, function(df) {
-  df <- df[rownames(df) %in% coldata$AN_clean, ]
-  df = df[coldata$AN_clean,] #Order samples
-  rownames(df) <- NULL
-  df <- df %>%
-    data.frame() %>%
-    dplyr::mutate(Samples = rownames(coldata)) %>%
-  tibble::column_to_rownames("Samples")
+  df <- df[rownames(df) %in% rownames(coldata), ]
+  df = data.frame(df[rownames(coldata),]) #Order samples 
   return(df)
 })
 
-all.equal(rownames(data_spatial[[1]]), rownames(coldata)) #Verify samples from clinical match the order from spatial
-all.equal(rownames(data_spatial[[1]]), colnames(counts)) #Verify samples from counts match the order from spatial
+all.equal(colnames(counts), rownames(data_spatial$Stroma))
 ```
 
 Normalize counts (60 patients)
@@ -115,21 +155,22 @@ gene_sets <- list(
 markers_all = unlist(unname(gene_sets))
 
 # Calulate DCs signature scores
-dc_signatures_score = compute.pathway.activity(counts.norm.log, gene_sets = gene_sets)[[2]]
+dc_signatures_score = compute.pathway.activity(counts.norm.log, gene_sets = gene_sets, 
+                                               paths = pathways_universe, file.name = "DC_signatures")[[2]]
 
 ## DC signatures - DC densities
 compute.modules.relationship(dc_signatures_score, data_spatial[,grep(paste0(paste0("Total.", dc_subtypes), collapse = "|"), 
                                                                      colnames(data_spatial)), drop = F], 
-                             file_name = "DC_signatures-densities", width = 8, height = 7)
+                             file_name = "DC_signatures-densities", width = 8, height = 7, ncol.grid = 3)
 
 ## Markers expression - DC densities
 compute.modules.relationship(data_spatial[,grep(paste0(paste0("Total.", dc_subtypes), collapse = "|"), 
                                                 colnames(data_spatial)), drop = F], 
                              t(counts.norm.log[rownames(counts.norm.log)%in%markers_all,]),
-                             file_name = "DC_markers-densities", width = 10, height = 7)
+                             file_name = "DC_markers-densities", width = 10, height = 7, width.grid = 20, height.grid = 15)
 
 ## DC signatures from RNAseq across response
-compute.metadata.association(dc_signatures_score, coldata[,"R.NR",drop=F], file.name = "DC_signatures_Response", width = 8, height = 15, pval = 1)
+compute.metadata.association(dc_signatures_score, coldata[,"R.NR",drop=F], file.name = "DC_signatures_Response", width = 8, height = 15, pval = 1, y_min = -2, y_max = 2, width_grid = 12, height_grid = 5)
 ```
 
 Cell-type deconvolution 
@@ -155,10 +196,10 @@ set.seed(123)
 Add patient groups obtained from megaclusters densities (58 patients) --> Remember there were 2 outliers
 ```{r}
 load("../output/Patients_groups.RData")
-patient_groups = patient_groups[rownames(patient_groups)%in%coldata$AN,]
-coldata = coldata[coldata$AN%in%rownames(patient_groups),]
-patient_groups = patient_groups[coldata$AN,]
-all.equal(rownames(patient_groups), coldata$AN) ## Rownames of coldata and patient_groups are in AN
+patient_groups = patient_groups[rownames(patient_groups)%in%rownames(coldata),]
+coldata = coldata[rownames(coldata)%in%rownames(patient_groups),]
+patient_groups = patient_groups[rownames(coldata),]
+all.equal(rownames(patient_groups), rownames(coldata)) ## Rownames of coldata and patient_groups are in AN
 coldata = coldata %>%
   dplyr::mutate(Groups = factor(ifelse(patient_groups$Groups == 4, 3, patient_groups$Groups))) ## Rename group 
 table(coldata$Groups)
@@ -179,11 +220,11 @@ counts.norm.log = ADImpute::NormalizeTPM(counts, log = T)
 
 TF analysis (58 patients)
 ```{r}
-tfs = compute.TFs.activity(counts.norm.log)
-#network = compute.WTCNA(tfs, corr_mod = 0.8, clustering.method = "ward.D2", return = T) 
+tfs = compute.TFs.activity(counts.norm.log, file.name = "NSCLC_Late_stage", universe = tfs_universe)
 
-#### Create TF network 
-tfs_modules = read.csv("../Results/TFs_modules.csv")
+#network = compute.WTCNA(tfs, corr_mod = 0.8, clustering.method = "ward.D2", return = T) 
+#### Create TF network (TFs modules were already saved - no need to run again)
+tfs_modules = read.csv("../output/TFs_modules.csv")
 
 tfs_list <- setNames(
   strsplit(tfs_modules$Composition, ","),
@@ -207,7 +248,7 @@ network[["TFs colors"]] = tf_colors
 network[["TFs per module"]] = tf_to_color
 
 #### TF modules - patient clusters
-compute.metadata.association(network[[1]], coldata[,"Groups", drop = F], pval = 5, file.name = "TF_modules_Groups")
+compute.metadata.association(network[[1]], coldata[,"Groups", drop = F], pval = 0.05, file.name = "TF_modules_Groups", y_min = -0.2, y_max = -0.05, width_grid = 6, height_grid = 5)
 
 #### TF modules - megaclusters density and entropy
 compute.modules.relationship(network[[1]], df_entropy, "Entropy-TFs_Modules", width = 8)
@@ -216,9 +257,9 @@ compute.modules.relationship(network[[1]], df_density, "Density-TFs_Modules", wi
 
 Pathway analysis (58 patients)
 ```{r}
-pathways = compute.pathway.activity(counts.norm.log)
+pathways = compute.pathway.activity(counts.norm.log, paths = pathways_universe, file.name = "NSCLC_Late_stage")
 #TF modules - pathways
-compute.modules.relationship(network[[1]], pathways, "Pathways_Progeny-TFs_Modules", width = 10)
+compute.modules.relationship(network[[1]], pathways, "Pathways_Progeny-TFs_Modules", width = 10, width.grid = 20, height.grid = 15)
 ```
 
 Chemokines scores (58 patients)
@@ -230,21 +271,24 @@ chemokines = c("CCL1", "CCL11", "CCL13", "CCL16", "CCL17", "CCL19", "CCL2", "CCL
 
 geneset = list(chemokines)
 
-chemokines_score = compute.pathway.activity(counts.norm.log, gene_sets = geneset)[[2]]
+chemokines_score = compute.pathway.activity(counts.norm.log, paths = pathways_universe, 
+                                            gene_sets = geneset, file.name = "Chemokines_signature")[[2]]
 colnames(chemokines_score)[[1]] = "chemokines_score"
 
 counts.norm.chemokines = counts.norm.log[rownames(counts.norm.log)%in%chemokines,]
 
 #### Chemokines - megaclusters density and entropy
-compute.modules.relationship(t(counts.norm.chemokines), df_entropy, "Entropy-Chemokines", width = 8, height = 15)
-compute.modules.relationship(t(counts.norm.chemokines), df_density, "Density-Chemokines", width = 8, height = 15)
+compute.modules.relationship(t(counts.norm.chemokines), df_entropy, "Entropy-Chemokines", width = 8, height = 15, width.grid = 25, height.grid = 20)
+compute.modules.relationship(t(counts.norm.chemokines), df_density, "Density-Chemokines", width = 8, height = 15, width.grid = 25, height.grid = 20)
 
 #### Chemokines signatures - Patient groups
-compute.metadata.association(chemokines_score, coldata[,"Groups", drop = F], pval = 1, file.name = "Chemokines_signature_Groups")
+compute.metadata.association(chemokines_score, coldata[,"Groups", drop = F], pval = 1, file.name = "Chemokines_signature_Groups",
+                              y_min = -2, y_max = 2, width_grid = 8, height_grid = 5)
 
 #### Chemokines - Patient groups
 compute.metadata.association(t(counts.norm.log[rownames(counts.norm.log)%in%chemokines,]), 
-                             coldata[,"Groups", drop = F], pval = 1, file.name = "Chemokines_Groups")
+                             coldata[,"Groups", drop = F], pval = 0.05, file.name = "Chemokines_Groups",
+                              y_min = -1, y_max = 9, width_grid = 18, height_grid = 10)
 ```
 
 Interferon genes (58 patients)
@@ -260,7 +304,8 @@ IFN_II <- c("IFNG")
 IFN_III <- c("IFNL1", "IFNL2", "IFNL3", "IFNL4")
 
 compute.metadata.association(t(counts.norm.log[rownames(counts.norm.log)%in%c(IFN_I, IFN_II, IFN_III),]), 
-                             coldata[,"Groups", drop = F], pval = 1, file.name = "Interferons_groups")
+                             coldata[,"Groups", drop = F], pval = 0.05, file.name = "Interferons_groups",
+                             y_min = 0, y_max = 4, width_grid = 10, height_grid = 8, ncol = 3)
 ```
 
 Immunoscores (58 patients)
@@ -269,7 +314,8 @@ source("src/immunoscores.R")
 immunescores = compute_gold_standards(counts.norm.log)
 
 #### Immunescores - patient clusters
-compute.metadata.association(immunescores, coldata[,"Groups", drop = F], file.name = "Immunescores_Groups", pval = 1)
+compute.metadata.association(immunescores, coldata[,"Groups", drop = F], file.name = "Immunescores_Groups", pval = 1,
+                             y_min = 0, y_max = 1.5, width_grid = 10, height_grid = 8, ncol = 3)
 ```
 
 Cell type deconvolution (58 patients)
@@ -281,26 +327,49 @@ deconv = deconv[rownames(deconv)%in%rownames(coldata),]
 deconv_cbsx_lm22 = deconv[,grep("CBSX_LM22", colnames(deconv))] 
 
 ### Deconvolution - Patients groups
-compute.metadata.association(deconv_cbsx_lm22, coldata[,"Groups", drop = F], pval = 1, file.name = "Deconvolution_Groups")
+compute.metadata.association(deconv_cbsx_lm22, coldata[,"Groups", drop = F], pval = 0.05, file.name = "Deconvolution_Groups",
+                             y_min = 0, y_max = 0.3, width_grid = 8, height_grid = 5)
 
 ### Deconvolution - Megaclusters density
-compute.modules.relationship(deconv_cbsx_lm22, df_density, "Density-Deconv_LM22", width = 8, height = 12)
+compute.modules.relationship(deconv_cbsx_lm22, df_density, "Density-Deconv_LM22", width = 8, height = 12, width.grid = 12, height.grid = 22, ncol.grid = 3)
 
 ### Deconvolution - Megaclusters entropy
-compute.modules.relationship(deconv_cbsx_lm22, df_entropy, "Entropy-Deconv_LM22", width = 8, height = 12)
+compute.modules.relationship(deconv_cbsx_lm22, df_entropy, "Entropy-Deconv_LM22", width = 8, height = 12, width.grid = 20, height.grid = 10)
+```
+
+Scatter plot: Gamma delta
+```{r}
+all.equal(rownames(deconv_cbsx_lm22), rownames(df_density))
+df = cbind("T.cells.gamma.delta" = deconv_cbsx_lm22$CBSX_LM22_T.cells.gamma.delta, 
+           "Mixed_pDC_Mature_DC" = df_density$Mixed_pDC_Mature_DC)
+
+stats::cor(deconv_cbsx_lm22$CBSX_LM22_T.cells.gamma.delta, df_density$Mixed_pDC_Mature_DC, use = "all.obs", "pearson")
+
+ggplot(df, aes(x = Mixed_pDC_Mature_DC, y = T.cells.gamma.delta)) +
+  geom_point(size = 2.5, alpha = 0.8) +
+  geom_smooth(method = "lm", se = TRUE, linewidth = 1) +
+  ggpubr::stat_cor(
+    method = "spearman",
+    label.x.npc = "left",
+    label.y.npc = "top",
+    size = 4
+  ) +
+  theme_classic(base_size = 14)
 ```
 
 Differential active TFs across patient groups (58 patients)
 ```{r}
-library(viper)
 coldata$group_1 <- factor(ifelse(coldata$Groups == 1, 1, "rest"))
-res_1 = diff_analysis(counts.norm.log, coldata$group_1, "1", "rest", file.name = "Diff_1vsrest")
+res_1 = diff_analysis(counts.norm.log, coldata$group_1, "1", "rest", file.name = "Diff_1vsrest", 
+                      TF.collection = "ARACNE", aracne_path = "../output/TF_network_ARACNE.txt")
 
 coldata$group_2 <- factor(ifelse(coldata$Groups == 2, 2, "rest"))
-res_2 = diff_analysis(counts.norm.log, coldata$group_2, "2", "rest", file.name = "Diff_2vsrest")
+res_2 = diff_analysis(counts.norm.log, coldata$group_2, "2", "rest", file.name = "Diff_2vsrest", 
+                      TF.collection = "ARACNE", aracne_path = "../output/TF_network_ARACNE.txt")
 
 coldata$group_3 <- factor(ifelse(coldata$Groups == 3, 3, "rest"))
-res_3 = diff_analysis(counts.norm.log, coldata$group_3, "3", "rest", file.name = "Diff_3vsrest")
+res_3 = diff_analysis(counts.norm.log, coldata$group_3, "3", "rest", file.name = "Diff_3vsrest", 
+                      TF.collection = "ARACNE", aracne_path = "../output/TF_network_ARACNE.txt")
 
 gene_sets <- list(
   Group1_markers = res_1$TFs_UP,
@@ -311,8 +380,8 @@ gene_sets <- list(
 
 TFs signatures scores (58 patients)
 ```{r}
-tfs = scale(compute.TFs.activity(counts.norm.log))
-deg_signatures_score = compute.pathway.activity(t(tfs), gene_sets = gene_sets)[[2]]
+tfs = scale(compute.TFs.activity(counts.norm.log, TF.collection = "ARACNE", file.name = "NSCLC_Late_stage_ARACNE"))
+deg_signatures_score = compute.pathway.activity(t(tfs), paths = pathways_universe, gene_sets = gene_sets, file.name = "TF_signatures")[[2]]
 patient_group <- apply(deg_signatures_score, 1, function(x) names(which.max(x)))
 coldata$deg_group = patient_group
 ```
@@ -324,6 +393,6 @@ res_clusters = compute.survival.analysis(coldata, "PFS", "PFS_event", file_name 
 
 Save genesets
 ```{r}
-saveRDS(gene_sets, "../output/group_marker_genesets.rds")
+saveRDS(gene_sets, "Results/group_marker_genesets.rds")
 ```
 

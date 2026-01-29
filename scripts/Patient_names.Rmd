@@ -1,0 +1,108 @@
+---
+title: "Patient_names"
+author: "Marcelo Hurtado"
+date: "2026-01-28"
+output: html_document
+---
+
+Samples correspondance
+```{r}
+# Bulk RNAseq and clinical data
+coldata = read.csv("../input/raw_files/clinical_data_clean.csv")
+
+samples = coldata %>%
+  dplyr::select(AN, AN_clean, N_Raw_matrice_Bulk) %>%
+  dplyr::mutate(Patient = paste0("Patient_", dplyr::row_number()))
+```
+
+Clinical data - all
+```{r}
+coldata = coldata %>%
+  dplyr::mutate(Patient_ID = samples$Patient) %>%
+  dplyr::select(Patient_ID, Treatment, Gender, Age_diag, Tabac, KRAS, BRAF, MET, R.NR, PFS, PFS_event, OS, OS_Event,
+                ICB_debut, ICB_arret, Progression_date, Date_dernieres_nouvelles, Date_deces, Site_biopsie) %>%
+  tibble::column_to_rownames("Patient_ID")
+
+samples = samples %>%
+    dplyr::filter(!(AN=="" & AN_clean=="" & N_Raw_matrice_Bulk=="")) #Remove rows where the three columns are empty
+
+coldata = coldata[rownames(coldata)%in%samples$Patient,]
+```
+
+Bulk RNA-Seq
+```{r}
+counts = read.csv("../input/raw_files/counts_raw.csv", row.names = 1) ## 116 patients in total
+
+coldata_bulk = read.csv("../input/raw_files/clinical_data_clean.csv") %>%
+  dplyr::filter(N_Raw_matrice_Bulk %in% colnames(counts)) %>%
+  tibble::column_to_rownames("N_Raw_matrice_Bulk")
+
+counts = counts[,rownames(coldata_bulk)] #Order samples on counts based on clinical data
+
+# keep only rows with valid bulk IDs
+map <- samples %>%
+  dplyr::filter(!is.na(N_Raw_matrice_Bulk), N_Raw_matrice_Bulk != "")
+
+map = map[match(colnames(counts), map$N_Raw_matrice_Bulk),]
+all.equal(map$N_Raw_matrice_Bulk, colnames(counts))
+
+colnames(counts) <- map$Patient
+
+all.equal(map$N_Raw_matrice_Bulk, rownames(coldata_bulk))
+
+rownames(coldata_bulk) = map$Patient
+
+coldata_bulk = coldata_bulk %>%
+  dplyr::select(Treatment, Gender, Age_diag, Tabac, KRAS, BRAF, MET, R.NR, PFS, PFS_event, OS, OS_Event,
+                ICB_debut, ICB_arret, Progression_date, Date_dernieres_nouvelles, Date_deces, Site_biopsie)
+```
+
+Spatial megaclusters
+```{r}
+df_entropy = read.csv("../input/MegaClusters_entropy.csv", row.names = 1)
+df_density = read.csv("../input/MegaClusters_density.csv", row.names = 1)
+
+# keep only rows with valid bulk IDs
+map <- samples %>%
+  dplyr::filter(samples$AN %in% rownames(df_density))
+
+map = map[match(rownames(df_density), map$AN),]
+all.equal(map$AN, rownames(df_density))
+
+rownames(df_density) <- map$Patient
+rownames(df_entropy) <- map$Patient
+```
+
+Spatial data densities
+```{r}
+load("../input/Spatial_densities.RData")
+data_spatial <- lapply(data_spatial, function(x) {
+
+  # keep only relevant rows from samples
+  map <- samples %>%
+    dplyr::filter(AN_clean %in% rownames(x))
+
+  # reorder to match x
+  map <- map[match(rownames(x), map$AN_clean), ]
+
+  # strict check
+  stopifnot(all.equal(map$AN_clean, rownames(x)) == TRUE)
+
+  # rename rows
+  rownames(x) <- map$Patient
+
+  x
+})
+```
+
+Save data
+```{r}
+write.csv(samples, file = "Samples_correspondance.csv")
+write.csv(coldata, file = "Clinical_data.csv")
+write.csv(counts, file = "Bulk_counts_raw.csv")
+write.csv(coldata_bulk, file = "Bulk_clinical_raw.csv")
+write.csv(df_density, file = "MegaClusters_density.csv")
+write.csv(df_entropy, file = "MegaClusters_entropy.csv")
+save(data_spatial, file = "Spatial_densities.RData")
+```
+

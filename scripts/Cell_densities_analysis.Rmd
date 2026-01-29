@@ -16,16 +16,11 @@ source("src/utils.R")
 Load data (68 patients)
 ```{r}
 load("../input/Spatial_densities.RData")
-traitData = read.csv("../input/raw_files/clinical_data_clean.csv") %>%
-  dplyr::filter(AN_clean %in% rownames(data_spatial$Stroma)) #Subset to only patients with clinical data
 
-### Replace '+' with 'plus' to avoid mismatches and change to a numeric matrix
-data_spatial <- lapply(data_spatial, function(x) {
-  colnames(x) <- gsub("\\+", "_plus", colnames(x))
-  x <- as.matrix(x)                     
-  storage.mode(x) <- "numeric"       
-  return(x)
-})
+traitData = read.csv("../input/Clinical_data.csv", row.names = 1) %>%
+  dplyr::filter(rownames(.) %in% rownames(data_spatial$Stroma)) #Subset to only patients with clinical data
+
+all.equal(rownames(data_spatial$Stroma), rownames(traitData))
 ```
 
 CD8 densities across patients  (68 patients)

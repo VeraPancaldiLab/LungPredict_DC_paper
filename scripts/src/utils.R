@@ -204,21 +204,27 @@ minMax <- function(x) {
   
 }
 
-diff_analysis = function(RNA.counts.normalized, feature, test, ref, pval = 0.05, file.name){
+diff_analysis = function(RNA.counts.normalized, feature, test, ref, pval = 0.05, TF.collection = "CollecTRI", aracne_path = NULL, file.name){
   
-  net = decoupleR::get_collectri(organism = 'human', split_complexes = F) #Get universe  
-  
-  collectri2viper_regulons <- function(df) {
-    regulon_list <- split(df, df$source)
-    regulons <- lapply(regulon_list, function(regulon) {
-      tfmode <- stats::setNames(regulon$mor, regulon$target)
-      list(tfmode = tfmode, likelihood = rep(1, length(tfmode)))
-    })
-    
-    return(regulons)
+  if(TF.collection == "CollecTRI"){
+    net = decoupleR::get_collectri(organism = 'human', split_complexes = F) #Get universe
+
+    collectri2viper_regulons <- function(df) {
+      regulon_list <- split(df, df$source)
+      regulons <- lapply(regulon_list, function(regulon) {
+        tfmode <- stats::setNames(regulon$mor, regulon$target)
+        list(tfmode = tfmode, likelihood = rep(1, length(tfmode)))
+      })
+
+      return(regulons)
+    }
+
+    net_regulons = collectri2viper_regulons(net)
+  }else if(TF.collection == "ARACNE"){
+    #network_file = read.delim2("~/Documents/ARACNe-AP/outputFolder/network.txt")
+    #write.table(network_file, file = "~/Documents/ARACNe-AP/outputFolder/network.txt", sep = "\t", row.names = F, quote = F, col.names = FALSE)
+    net_regulons <- viper::aracne2regulon(aracne_path, as.matrix(RNA.counts.normalized), format = "3col")
   }
-  
-  net_regulons = collectri2viper_regulons(net)
 
   ####TFs differential active 
   # Generating test and ref data
@@ -239,12 +245,6 @@ diff_analysis = function(RNA.counts.normalized, feature, test, ref, pval = 0.05,
   
   # Running msVIPER
   mra <- msviper(signature, net_regulons, dnull, verbose = F, minsize = 5)
-
-  # Plot DiffActive TFs
-  svg(paste0("Results/Differential_TFs_", file.name, ".svg"),
-      width = 10, height = 8)
-  print(plot(mra, mrs = 15, cex = 1, include = c("expression", "activity")))
-  dev.off()
   
   tfs_da = mra$es$p.value
   tfs_da = tfs_da[tfs_da < pval]
@@ -254,6 +254,12 @@ diff_analysis = function(RNA.counts.normalized, feature, test, ref, pval = 0.05,
   nes = nes[tfs_names] #only significant
   up = names(nes[nes > 0]) #up active TFs
   down = names(nes[nes < 0]) #down active TFs
+  
+  # Plot DiffActive TFs
+  svg(paste0("Results/Differential_TFs_", file.name, ".svg"),
+      width = 20, height = 15)
+  print(plot(mra, mrs = up, cex = 4, sep = 1.5, include = c("activity")))
+  dev.off()
   
   return(list(TFs_UP = up, TFs_DOWN = down, mra))
   
@@ -304,8 +310,10 @@ compute.survival.analysis = function(survival.data, PFS, PFS_event, file_name = 
                                 size = 1,
                                 conf.int.style = "step",
                                 pval = TRUE,
+                                pval.size = 8,
                                 risk.table = TRUE,
                                 risk.table.col = "strata",
+                                fontsize = 9,
                                 legend.labs = legend.labs,
                                 risk.table.height = 0.3,
                                 ggtheme = theme_grey(),
@@ -320,7 +328,7 @@ compute.survival.analysis = function(survival.data, PFS, PFS_event, file_name = 
       filename = paste0("Results/SurvPlot_", group_column, "_", file_name, ".svg"),
       plot = combined,
       width = 10,
-      height = 5,
+      height = 6,
       units = "in",
       device = "svg"
     )
@@ -378,11 +386,13 @@ compute.survival.analysis = function(survival.data, PFS, PFS_event, file_name = 
                                     palette = c("#E7B800", "#2E9FDF"),
                                     conf.int.style = "step",
                                     pval = TRUE,
+                                    pval.size = 8,
                                     risk.table = TRUE,
                                     risk.table.col = "strata",
                                     legend.labs = legend.labs,
                                     risk.table.height = 0.3,
-                                    ggtheme = theme_grey(),
+                                    fontsize = 9,
+                                    ggtheme = ggplot2::theme_grey(),
                                     title = paste0("Cox PH for Surv(time, status) ~", colnames(features)[n]),
                                     xlab = "Time to death/recurrence/progression")
         
@@ -392,7 +402,7 @@ compute.survival.analysis = function(survival.data, PFS, PFS_event, file_name = 
           filename = paste0("Results/SurvPlot_", names(significant_combinations)[contador], "_", file_name, ".svg"),
           plot = combined,
           width = 10,
-          height = 5,
+          height = 6,
           units = "in",
           device = "svg"
         )
@@ -598,3 +608,195 @@ cell.groups.anova.test = function(cell.groups, coldata, trait, pval = 0.05){
     return(cell.groups.sig)
   }
 }
+
+
+plot.module.scatter.grid <- function(matA, matB, cor_mat, p_mat,
+                                     file_name,
+                                     pval = 0.05,
+                                     cor_type = "p",
+                                     width = width,
+                                     height = width,
+                                     only_sig = TRUE,
+                                     ncol = NULL) {   # allow NULL for auto
+  
+  pairs <- expand.grid(A = colnames(matA),
+                       B = colnames(matB),
+                       stringsAsFactors = FALSE)
+  
+  pairs$keep <- mapply(function(a, b) {
+    if (only_sig) p_mat[a, b] <= pval else TRUE
+  }, pairs$A, pairs$B)
+  
+  pairs <- pairs[pairs$keep, ]
+  
+  if (nrow(pairs) == 0) {
+    message("No scatter plots to draw.")
+    return(invisible(NULL))
+  }
+  
+  nplots <- nrow(pairs)
+  
+  # ---- automatic ncol if not specified ----
+  if (is.null(ncol)) {
+    ncol <- ceiling(sqrt(nplots))
+  }
+  
+  nrow_grid <- ceiling(nplots / ncol)
+  
+  pdf(paste0("Results/", file_name, "_scatter_grid.pdf"),
+      width = width, height = height)
+  
+  par(
+    mfrow = c(nrow_grid, ncol),
+    mar = c(4, 6, 4.5, 3)
+  )
+  
+  for (k in seq_len(nplots)) {
+    
+    i <- pairs$A[k]
+    j <- pairs$B[k]
+    
+    df <- data.frame(
+      x = matB[, j],
+      y = matA[, i]
+    )
+    
+    r  <- cor_mat[i, j]
+    pv <- p_mat[i, j]
+    
+    plot(df$x, df$y,
+         pch = 16, cex = 0.8,
+         xlab = j,
+         ylab = i,
+         main = paste0(i, " vs ", j))
+    
+    abline(lm(y ~ x, df), col = "steelblue", lwd = 2)
+    
+    mtext(
+      paste0("R = ", signif(r, 3),
+             " | p = ", format.pval(pv, digits = 2)),
+      side = 3,
+      line = 0.4,
+      cex = 0.75
+    )
+  }
+  
+  dev.off()
+}
+
+compute.metadata.association.boxplot_summary <- function(
+    tfs.modules, coldata, pval = 0.05, file.name, 
+    ncol = 5, y_min = 0, y_max = 0.5, width = 18, height = 10
+){
+  
+  library(dplyr)
+  library(tidyr)
+  library(ggplot2)
+  library(rstatix)
+  library(ggpubr)
+  
+  # ---- categorical traits ----
+  coldata_cat <- coldata %>%
+    dplyr::select(dplyr::where(is.character) | dplyr::where(is.factor))
+  
+  if (ncol(coldata_cat) == 0) {
+    message("No categorical traits found.")
+    return(invisible(NULL))
+  }
+  
+  # ---- long format ----
+  df_long <- cbind(tfs.modules, coldata_cat) %>%
+    as.data.frame() %>%
+    pivot_longer(
+      cols = colnames(tfs.modules),
+      names_to = "module",
+      values_to = "value"
+    ) %>%
+    pivot_longer(
+      cols = colnames(coldata_cat),
+      names_to = "trait",
+      values_to = "group"
+    ) %>%
+    mutate(group = as.factor(group))
+  
+  # ---- ANOVA per module × trait ----
+  anova_df <- df_long %>%
+    group_by(module, trait) %>%
+    do({
+      res <- rstatix::anova_test(data = ., dv = value, between = group)
+      tibble(F = res$F, p = res$p)
+    }) %>%
+    ungroup()
+  
+  sig_pairs <- anova_df %>% filter(p < pval)
+  
+  if(nrow(sig_pairs) == 0){
+    message("No significant ANOVA results.")
+    return(invisible(NULL))
+  }
+  
+  feature_labels <- sig_pairs %>%
+    mutate(
+      feature_label = paste0(module, "\nF=", signif(F,3), ", p=", signif(p,3))
+    ) %>%
+    distinct(module, feature_label) %>%
+    deframe()
+  
+  df_long <- df_long %>% semi_join(sig_pairs, by = c("module", "trait"))
+  
+  # ---- order modules by effect size ----
+  module_order <- df_long %>%
+    group_by(module, group) %>%
+    summarise(med = median(value, na.rm = TRUE), .groups = "drop") %>%
+    group_by(module) %>%
+    arrange(group, .by_group = TRUE) %>%
+    summarise(effect = last(med) - first(med), .groups = "drop") %>%
+    arrange(desc(effect)) %>%
+    pull(module)
+  
+  df_long$module <- factor(df_long$module, levels = module_order)
+  
+  # ---- Tukey HSD ----
+  tukey_df <- df_long %>%
+    group_by(module, trait) %>%
+    filter(n_distinct(group) > 1) %>%  # skip groups with only 1 level
+    group_modify(~ {
+      tuk <- tukey_hsd(.x, value ~ group)
+      if(nrow(tuk) == 0) return(NULL)
+      add_xy_position(tuk, x = "group")
+    }) %>%
+    ungroup()
+  
+  # ---- plot ----
+  pdf(paste0("Results/ANOVA_boxplot_summary_", file.name, ".pdf"), width = width, height = height)
+  
+  p <- ggplot(df_long, aes(x = group, y = value, fill = group)) +
+    geom_boxplot(width = 0.6, outlier.size = 0.4, alpha = 0.85) +
+    geom_jitter(width = 0.2, size = 1, alpha = 0.7, color = "black") +  # <-- add points
+    facet_wrap(~ module + trait, ncol = ncol, labeller = labeller(module = feature_labels)) +
+    coord_cartesian(ylim = c(y_min, y_max)) +
+    labs(
+      y = "Feature value",
+      fill = "Group",
+      title = "Features-trait associations",
+      subtitle = paste0("One-way ANOVA with Tukey HSD | Showing associations (p-value < ", pval, ")")
+    ) +
+    theme_bw(base_size = 11) +
+    theme(
+      strip.text = element_text(size = 8),
+      axis.text.x = element_text(size = 8),
+      panel.grid.minor = element_blank(),
+      legend.position = "top",
+      panel.spacing.x = unit(1.0, "lines")
+    )
+  
+  if(nrow(tukey_df) > 0){
+    p <- p + stat_pvalue_manual(tukey_df, hide.ns = TRUE, size = 2.5)
+  }
+  
+  print(p)
+  dev.off()
+  
+  invisible(anova_df)
+}
+

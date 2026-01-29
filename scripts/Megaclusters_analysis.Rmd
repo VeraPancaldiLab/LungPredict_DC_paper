@@ -21,36 +21,6 @@ entropy_clusters = read.csv("../input/raw_files/table_entropy_mega_cluster.csv")
   dplyr::filter(Spatial_cluster != "cDC1+") 
 ```
 
-Matrices with entropy and density values per patient (68 patients)
-```{r}
-### Entropy values
-df_entropy = entropy_clusters %>%
-  dplyr::select(AN, Spatial_cluster, Value_entropy, R.NR, PFS, PFS_event) %>%
-  tidyr::pivot_wider(
-    names_from = Spatial_cluster,
-    values_from = Value_entropy
-  ) %>%
-  tibble::column_to_rownames("AN") 
-
-### Density values
-df_density = mega_clusters %>%
-  dplyr::select(AN, Cluster_type, Nombre_cluster_type_mm2) %>%
-  tidyr::pivot_wider(
-    names_from = Cluster_type,
-    values_from = Nombre_cluster_type_mm2
-  ) %>%
-  tibble::column_to_rownames("AN") 
-
-traitData = df_entropy %>%
-  dplyr::select(R.NR, PFS, PFS_event)
-
-df_entropy = df_entropy %>%
-  dplyr::select(-R.NR, -PFS, -PFS_event)
-
-#write.csv(df_entropy, file = "../input/MegaClusters_entropy.csv")
-#write.csv(df_density, file = "../input/MegaClusters_density.csv")
-```
-
 CD8 enrichment in megaclusters (68 patients)
 ```{r}
 p <- ggplot(entropy_clusters, aes(x = Spatial_cluster, y = Value_entropy, fill = Spatial_cluster)) +
@@ -152,6 +122,21 @@ ggsave(
 )
 ```
 
+Load data per patient
+```{r}
+df_density = read.csv("../input/MegaClusters_density.csv", row.names = 1)
+df_entropy = read.csv("../input/MegaClusters_entropy.csv", row.names = 1)
+
+traitData = read.csv("../input/Clinical_data.csv", row.names = 1) %>%
+  dplyr::filter(rownames(.) %in% rownames(df_density)) #Subset to only patients with clinical data
+
+df_density = df_density[match(rownames(traitData), rownames(df_density)),]
+df_entropy = df_entropy[match(rownames(traitData), rownames(df_entropy)),]
+
+all.equal(rownames(df_density), rownames(traitData))
+all.equal(rownames(df_entropy), rownames(traitData))
+```
+
 Heatmap for megaclusters (68 patients)
 ```{r}
 ## Heatmap annotations
@@ -205,25 +190,30 @@ k = 5
 clusters <- cutree(hc, k = k)
 
 # Save dendrogram as SVG
-svg("Results/Patients_groups_dendrogram.svg", width = 10, height = 6)
+svg("Results/Patients_groups_dendrogram.svg", width = 20, height = 10)
 
-plot(hc,
-     main = "Patients groups",
-     xlab = "",
-     sub = "",
-     cex = 0.8)
+plot(
+  hc,
+  main = "Patients groups",
+  xlab = "",
+  sub = "",
+  cex = 1.5
+)
 rect.hclust(hc, k = k, border = 2:4)
 
 dev.off()
 
 coldata = traitData %>%
   dplyr::mutate(Groups = clusters)
+
 ```
 
 Remove 2 outliers (patient groups with 1 sample) - (66 patients)
 ```{r}
 coldata = coldata %>%
-  dplyr::filter(Groups %in% c(1,2,4))
+  dplyr::filter(Groups %in% c(1,2,3))
+
+table(coldata$Groups)
 
 df_density = df_density[rownames(df_density)%in%rownames(coldata),] ## Subset to only patients within the patient groups
 ```
@@ -268,13 +258,13 @@ ht1 = ComplexHeatmap::Heatmap(t(scale(df_density)),
         border = T, cluster_columns = F, column_split = coldata$Groups,
         top_annotation = ann_colors, column_gap = unit(8, "mm"), 
         name = "Megaclusters density", clustering_method_rows = "ward.D2", 
-        column_dend_height = unit(5, "cm"), row_dend_width = unit(5, "cm"), 
+        column_dend_height = unit(5, "cm"), row_dend_width = unit(1, "cm"), 
         column_dend_reorder = T, row_dend_reorder = F,
         show_row_names = T, 
         show_heatmap_legend = T, 
         row_names_gp = grid::gpar(fontsize = 16), 
         column_names_gp = grid::gpar(fontsize =12), 
-        width = unit(25, "cm"), height = unit(10, "cm"), na_col = "grey90",
+        width = unit(30, "cm"), height = unit(10, "cm"), na_col = "grey90",
         heatmap_legend_param = list(labels_gp = grid::gpar(fontsize = 12), legend_width = unit(12, "cm"), 
                                     legend_heigh = unit(12, "cm"), title_gp = grid::gpar(fontsize = 12)))
 
@@ -299,6 +289,6 @@ res_clusters = compute.survival.analysis(features = df_density, survival.data = 
 
 Save patient group info (66 patients)
 ```{r}
-save(coldata, file = "Patients_groups.RData")
+save(coldata, file = "Results/Patients_groups.RData")
 ```
 
