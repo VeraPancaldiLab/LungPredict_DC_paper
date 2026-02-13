@@ -327,11 +327,13 @@ deconv = deconv[rownames(deconv)%in%rownames(coldata),]
 deconv_cbsx_lm22 = deconv[,grep("CBSX_LM22", colnames(deconv))] 
 
 ### Deconvolution - Patients groups
-compute.metadata.association(deconv_cbsx_lm22, coldata[,"Groups", drop = F], pval = 0.05, file.name = "Deconvolution_Groups",
-                             y_min = 0, y_max = 0.3, width_grid = 8, height_grid = 5)
+coldata = coldata %>%
+  dplyr::mutate(Groups = ifelse(Groups == 1, "DC_scattered", ifelse(Groups == 2, "cDC1_driven", "cDC2_driven")))
+compute.metadata.association(deconv_cbsx_lm22 %>% dplyr::select(-CBSX_LM22_B.naive.cells, -CBSX_LM22_CD4.naive), coldata[,"Groups", drop = F], pval = 2, file.name = "Deconvolution_Groups",
+                             y_min = 0, y_max = 0.3, width_grid = 20, height_grid = 15)
 
 ### Deconvolution - Megaclusters density
-compute.modules.relationship(deconv_cbsx_lm22, df_density, "Density-Deconv_LM22", width = 8, height = 12, width.grid = 12, height.grid = 22, ncol.grid = 3)
+compute.modules.relationship(deconv_cbsx_lm22, df_density, "Density-Deconv_LM22", width = 8, height = 12, width.grid = 35, height.grid = 22, ncol.grid = 5)
 
 ### Deconvolution - Megaclusters entropy
 compute.modules.relationship(deconv_cbsx_lm22, df_entropy, "Entropy-Deconv_LM22", width = 8, height = 12, width.grid = 20, height.grid = 10)

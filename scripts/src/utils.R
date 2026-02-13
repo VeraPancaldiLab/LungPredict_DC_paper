@@ -642,13 +642,16 @@ plot.module.scatter.grid <- function(matA, matB, cor_mat, p_mat,
   }
   
   nrow_grid <- ceiling(nplots / ncol)
-  
-  pdf(paste0("Results/", file_name, "_scatter_grid.pdf"),
+  svg(paste0("Results/", file_name, "_scatter_grid.svg"),
       width = width, height = height)
   
+  # Increase margins a bit if needed
   par(
     mfrow = c(nrow_grid, ncol),
-    mar = c(4, 6, 4.5, 3)
+    mar = c(5, 6, 5, 3),        # bottom, left, top, right
+    cex.lab = 1.5,               # axis labels
+    cex.axis = 1.3,              # axis tick labels
+    cex.main = 1.8               # plot title
   )
   
   for (k in seq_len(nplots)) {
@@ -665,19 +668,25 @@ plot.module.scatter.grid <- function(matA, matB, cor_mat, p_mat,
     pv <- p_mat[i, j]
     
     plot(df$x, df$y,
-         pch = 16, cex = 0.8,
-         xlab = j,
-         ylab = i,
+         pch = 16, cex = 1.5,        # increase point size
+         xlab = "",
+         ylab = "",
          main = paste0(i, " vs ", j))
     
-    abline(lm(y ~ x, df), col = "steelblue", lwd = 2)
+    # Add bigger axis titles
+    title(
+      xlab = j, ylab = i,
+      cex.lab = 2        # increases both x and y labels
+    )
+    
+    abline(lm(y ~ x, df), col = "steelblue", lwd = 2.5)  # thicker regression line
     
     mtext(
       paste0("R = ", signif(r, 3),
              " | p = ", format.pval(pv, digits = 2)),
       side = 3,
-      line = 0.4,
-      cex = 0.75
+      line = 0,                  # move a bit higher
+      cex = 1.3                     # increase text size
     )
   }
   
@@ -740,7 +749,7 @@ compute.metadata.association.boxplot_summary <- function(
       feature_label = paste0(module, "\nF=", signif(F,3), ", p=", signif(p,3))
     ) %>%
     distinct(module, feature_label) %>%
-    deframe()
+    tibble::deframe()
   
   df_long <- df_long %>% semi_join(sig_pairs, by = c("module", "trait"))
   
@@ -768,7 +777,8 @@ compute.metadata.association.boxplot_summary <- function(
     ungroup()
   
   # ---- plot ----
-  pdf(paste0("Results/ANOVA_boxplot_summary_", file.name, ".pdf"), width = width, height = height)
+  svg(paste0("Results/ANOVA_boxplot_summary_", file.name, ".svg"), 
+      width = width, height = height)
   
   p <- ggplot(df_long, aes(x = group, y = value, fill = group)) +
     geom_boxplot(width = 0.6, outlier.size = 0.4, alpha = 0.85) +
@@ -781,17 +791,30 @@ compute.metadata.association.boxplot_summary <- function(
       title = "Features-trait associations",
       subtitle = paste0("One-way ANOVA with Tukey HSD | Showing associations (p-value < ", pval, ")")
     ) +
-    theme_bw(base_size = 11) +
+    theme_bw(base_size = 12) +
     theme(
-      strip.text = element_text(size = 8),
-      axis.text.x = element_text(size = 8),
+      strip.text = element_text(size = 14),
+      axis.text.x = element_text(size = 14, angle = 45, hjust = 1),  # diagonal x labels
+      axis.text.y = element_text(size = 14),
+      axis.title.x = element_text(size = 16, face = "bold"),
+      axis.title.y = element_text(size = 16, face = "bold"),
+      plot.title = element_text(size = 20, face = "bold"),
+      plot.subtitle = element_text(size = 16),
+      legend.title = element_text(size = 16, face = "bold"),
+      legend.text = element_text(size = 14),
       panel.grid.minor = element_blank(),
       legend.position = "top",
       panel.spacing.x = unit(1.0, "lines")
     )
   
   if(nrow(tukey_df) > 0){
-    p <- p + stat_pvalue_manual(tukey_df, hide.ns = TRUE, size = 2.5)
+    p <- p + stat_pvalue_manual(
+      tukey_df, 
+      hide.ns = TRUE,    # hide non-significant
+      size = 8,          # font size of p-value text
+      tip.length = 0.03, # length of the vertical lines
+      bracket.size = 0.8 # thickness of the horizontal significance line
+    )
   }
   
   print(p)

@@ -287,6 +287,14 @@ res_clusters = compute.survival.analysis(features = df_density, survival.data = 
                                        "PFS", "PFS_event", file_name = "Patient_clusters", p.value = 0.05, thres = 0.5)
 ```
 
+Statistical test to compare megacluster densities between Group 1 and 2+3
+```{r}
+source("~/Documents/CellTFusion/R/CellTFusion.R")
+source("src/utils.R")
+coldata$Clusters <- ifelse(coldata$Groups == 1, "Group1", "Group2+3")
+compute.metadata.association(df_density, coldata[,"Clusters",drop=F], file.name = "Stat_test_Group1vsothers", width = 8, height = 15, pval = 1, y_min = 0, y_max = 6, ncol = 4, width_grid = 25, height_grid = 15)
+```
+
 Save patient group info (66 patients)
 ```{r}
 save(coldata, file = "Results/Patients_groups.RData")

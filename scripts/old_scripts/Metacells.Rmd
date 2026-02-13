@@ -14,7 +14,7 @@ library(dplyr)
 
 Load object
 ```{r}
-load("~/Downloads/Zilionis_scRNA/Zilionis_scRNAseq.RData")
+load("~/Downloads/Zilionis_scRNA/Metacells_Zilionis.RData")
 ```
 
 Create metacells
