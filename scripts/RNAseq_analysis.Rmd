@@ -164,10 +164,17 @@ compute.modules.relationship(dc_signatures_score, data_spatial[,grep(paste0(past
                              file_name = "DC_signatures-densities", width = 8, height = 7, ncol.grid = 3)
 
 ## Markers expression - DC densities
+dcs = c("Total.pDC_plus", "Total.cDC1_plus", "Total.cDC2_plus")
+markers = c("CLEC4C", "LILRA4", "XCR1", "CLEC9A", "CLEC10A", "CD1C")
+compute.modules.relationship(data_spatial[, dcs, drop = F], 
+                             t(counts.norm.log[rownames(counts.norm.log)%in%markers,]),
+                             file_name = "DC_markers-densities", width = 10, height = 7, plot.grid = T, width.grid = 20, height.grid = 15)
+
+
 compute.modules.relationship(data_spatial[,grep(paste0(paste0("Total.", dc_subtypes), collapse = "|"), 
                                                 colnames(data_spatial)), drop = F], 
                              t(counts.norm.log[rownames(counts.norm.log)%in%markers_all,]),
-                             file_name = "DC_markers-densities", width = 10, height = 7, width.grid = 20, height.grid = 15)
+                             file_name = "DC_markers-densities", width = 10, height = 7, plot.grid = T, width.grid = 20, height.grid = 15)
 
 ## DC signatures from RNAseq across response
 compute.metadata.association(dc_signatures_score, coldata[,"R.NR",drop=F], file.name = "DC_signatures_Response", width = 8, height = 15, pval = 1, y_min = -2, y_max = 2, width_grid = 12, height_grid = 5)
@@ -329,8 +336,8 @@ deconv_cbsx_lm22 = deconv[,grep("CBSX_LM22", colnames(deconv))]
 ### Deconvolution - Patients groups
 coldata = coldata %>%
   dplyr::mutate(Groups = ifelse(Groups == 1, "DC_scattered", ifelse(Groups == 2, "cDC1_driven", "cDC2_driven")))
-compute.metadata.association(deconv_cbsx_lm22 %>% dplyr::select(-CBSX_LM22_B.naive.cells, -CBSX_LM22_CD4.naive), coldata[,"Groups", drop = F], pval = 2, file.name = "Deconvolution_Groups",
-                             y_min = 0, y_max = 0.3, width_grid = 20, height_grid = 15)
+compute.metadata.association(deconv_cbsx_lm22 %>% dplyr::select(-CBSX_LM22_B.naive.cells, -CBSX_LM22_CD4.naive), coldata[,"Groups", drop = F], 
+                             pval = 2, plot_grid = T, file.name = "Deconvolution_Groups", y_min = 0, y_max = 0.3, width_grid = 20, height_grid = 15)
 
 ### Deconvolution - Megaclusters density
 compute.modules.relationship(deconv_cbsx_lm22, df_density, "Density-Deconv_LM22", width = 8, height = 12, width.grid = 35, height.grid = 22, ncol.grid = 5)
