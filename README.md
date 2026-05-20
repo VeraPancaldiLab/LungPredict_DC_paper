@@ -68,7 +68,7 @@ Make sure to run `renv::deactivate()` when finishing, to avoid conflicts wheneve
 For more information about how R-environments work, visit the main page of the tool [renv](https://rstudio.github.io/renv/articles/renv.html).
 
 ## Citation
-Soon available
+Gobbini, E.* , Duplouye, P.*, Hurtado, M *. et al. Specific dendritic cells spatial organization is associated to ICB Response in Non–Small-Cell Lung Cancer. 2026. doi: 10.64898/2026.05.04.720587
 
 ## Contributing
 If you are interested or have questions about the analysis done in this project, we invite you to open an issue in https://github.com/VeraPancaldiLab/LungPredict_DC_paper/issues or contact Marcelo Hurtado (marcelo.hurtado@inserm.fr) for more information.
