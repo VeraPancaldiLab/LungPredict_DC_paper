@@ -1,0 +1,68 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' class='svglite' width='792.00pt' height='244.80pt' viewBox='0 0 792.00 244.80'>
+<defs>
+  <style type='text/css'><![CDATA[
+    .svglite line, .svglite polyline, .svglite polygon, .svglite path, .svglite rect, .svglite circle {
+      fill: none;
+      stroke: #000000;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-miterlimit: 10.00;
+    }
+    .svglite text {
+      white-space: pre;
+    }
+  ]]></style>
+</defs>
+<rect width='100%' height='100%' style='stroke: none; fill: #FFFFFF;'/>
+<defs>
+  <clipPath id='cpMC4wMHw3OTIuMDB8MC4wMHwyNDQuODA='>
+    <rect x='0.00' y='0.00' width='792.00' height='244.80' />
+  </clipPath>
+</defs>
+<g clip-path='url(#cpMC4wMHw3OTIuMDB8MC4wMHwyNDQuODA=)'>
+<rect x='0.00' y='0.00' width='792.00' height='244.80' style='stroke-width: 1.36; stroke: #FFFFFF; fill: #FFFFFF;' />
+<rect x='162.79' y='48.32' width='410.03' height='157.70' style='stroke-width: 1.36; stroke: none; fill: #FFFFFF;' />
+<polyline points='244.70,206.01 244.70,48.32 ' style='stroke-width: 0.68; stroke: #EBEBEB; stroke-linecap: butt;' />
+<polyline points='389.10,206.01 389.10,48.32 ' style='stroke-width: 0.68; stroke: #EBEBEB; stroke-linecap: butt;' />
+<polyline points='533.50,206.01 533.50,48.32 ' style='stroke-width: 0.68; stroke: #EBEBEB; stroke-linecap: butt;' />
+<polyline points='162.79,176.45 572.82,176.45 ' style='stroke-width: 1.36; stroke: #EBEBEB; stroke-linecap: butt;' />
+<polyline points='162.79,127.17 572.82,127.17 ' style='stroke-width: 1.36; stroke: #EBEBEB; stroke-linecap: butt;' />
+<polyline points='162.79,77.89 572.82,77.89 ' style='stroke-width: 1.36; stroke: #EBEBEB; stroke-linecap: butt;' />
+<polyline points='175.81,206.01 175.81,48.32 ' style='stroke-width: 1.36; stroke: #EBEBEB; stroke-linecap: butt;' />
+<polyline points='313.60,206.01 313.60,48.32 ' style='stroke-width: 1.36; stroke: #EBEBEB; stroke-linecap: butt;' />
+<polyline points='464.60,206.01 464.60,48.32 ' style='stroke-width: 1.36; stroke: #EBEBEB; stroke-linecap: butt;' />
+<line x1='464.60' y1='206.01' x2='464.60' y2='48.32' style='stroke-width: 1.36; stroke: #666666; stroke-dasharray: 7.24,7.24; stroke-linecap: butt;' />
+<polyline points='441.54,82.82 441.54,72.96 ' style='stroke-width: 1.28; stroke-linecap: butt;' />
+<polyline points='441.54,77.89 246.31,77.89 ' style='stroke-width: 1.28; stroke-linecap: butt;' />
+<polyline points='246.31,82.82 246.31,72.96 ' style='stroke-width: 1.28; stroke-linecap: butt;' />
+<polyline points='411.42,132.09 411.42,122.24 ' style='stroke-width: 1.28; stroke-linecap: butt;' />
+<polyline points='411.42,127.17 181.43,127.17 ' style='stroke-width: 1.28; stroke-linecap: butt;' />
+<polyline points='181.43,132.09 181.43,122.24 ' style='stroke-width: 1.28; stroke-linecap: butt;' />
+<polyline points='554.18,181.37 554.18,171.52 ' style='stroke-width: 1.28; stroke-linecap: butt;' />
+<polyline points='554.18,176.45 294.31,176.45 ' style='stroke-width: 1.28; stroke-linecap: butt;' />
+<polyline points='294.31,181.37 294.31,171.52 ' style='stroke-width: 1.28; stroke-linecap: butt;' />
+<circle cx='343.93' cy='77.89' r='3.65' style='stroke-width: 0.90; fill: #000000;' />
+<circle cx='296.42' cy='127.17' r='3.65' style='stroke-width: 0.90; fill: #000000;' />
+<circle cx='424.25' cy='176.45' r='3.65' style='stroke-width: 0.90; fill: #000000;' />
+<text x='581.51' y='81.95' style='font-size: 11.38px; font-family: "Arial";' textLength='173.67px' lengthAdjust='spacingAndGlyphs'>HR 0.382 (0.175-0.832), p = 0.015</text>
+<text x='581.83' y='131.23' style='font-size: 11.38px; font-family: "Arial";' textLength='180.18px' lengthAdjust='spacingAndGlyphs'>HR 0.262 (0.105-0.654), p = 0.0042</text>
+<text x='580.85' y='180.51' style='font-size: 11.38px; font-family: "Arial";' textLength='160.65px' lengthAdjust='spacingAndGlyphs'>HR 0.725 (0.257-2.04), p = 0.54</text>
+<rect x='162.79' y='48.32' width='410.03' height='157.70' style='stroke-width: 1.36; stroke: #333333;' />
+<text x='156.51' y='180.44' text-anchor='end' style='font-size: 11.20px;fill: #4D4D4D; font-family: "Arial";' textLength='147.39px' lengthAdjust='spacingAndGlyphs'>cDC1_driven vs cDC2_driven</text>
+<text x='156.51' y='131.16' text-anchor='end' style='font-size: 11.20px;fill: #4D4D4D; font-family: "Arial";' textLength='151.53px' lengthAdjust='spacingAndGlyphs'>cDC1_driven vs DC_scattered</text>
+<text x='156.51' y='81.88' text-anchor='end' style='font-size: 11.20px;fill: #4D4D4D; font-family: "Arial";' textLength='151.53px' lengthAdjust='spacingAndGlyphs'>cDC2_driven vs DC_scattered</text>
+<polyline points='159.30,176.45 162.79,176.45 ' style='stroke-width: 1.36; stroke: #333333; stroke-linecap: butt;' />
+<polyline points='159.30,127.17 162.79,127.17 ' style='stroke-width: 1.36; stroke: #333333; stroke-linecap: butt;' />
+<polyline points='159.30,77.89 162.79,77.89 ' style='stroke-width: 1.36; stroke: #333333; stroke-linecap: butt;' />
+<polyline points='175.81,209.50 175.81,206.01 ' style='stroke-width: 1.36; stroke: #333333; stroke-linecap: butt;' />
+<polyline points='313.60,209.50 313.60,206.01 ' style='stroke-width: 1.36; stroke: #333333; stroke-linecap: butt;' />
+<polyline points='464.60,209.50 464.60,206.01 ' style='stroke-width: 1.36; stroke: #333333; stroke-linecap: butt;' />
+<text x='175.81' y='220.28' text-anchor='middle' style='font-size: 11.20px;fill: #4D4D4D; font-family: "Arial";' textLength='15.80px' lengthAdjust='spacingAndGlyphs'>0.1</text>
+<text x='313.60' y='220.28' text-anchor='middle' style='font-size: 11.20px;fill: #4D4D4D; font-family: "Arial";' textLength='15.80px' lengthAdjust='spacingAndGlyphs'>0.3</text>
+<text x='464.60' y='220.28' text-anchor='middle' style='font-size: 11.20px;fill: #4D4D4D; font-family: "Arial";' textLength='15.80px' lengthAdjust='spacingAndGlyphs'>1.0</text>
+<text x='367.81' y='236.46' text-anchor='middle' style='font-size: 14.00px; font-family: "Arial";' textLength='202.92px' lengthAdjust='spacingAndGlyphs'>Hazard ratio (95% CI, log scale)</text>
+<text x='162.79' y='37.98' style='font-size: 14.00px; font-family: "Arial";' textLength='481.07px' lengthAdjust='spacingAndGlyphs'>HR &lt; 1: lower risk of progression/death in the first group of each contrast</text>
+<text x='162.79' y='16.98' style='font-size: 16.80px; font-family: "Arial";' textLength='339.69px' lengthAdjust='spacingAndGlyphs'>Pairwise hazard ratios (Cox PH): deg_group</text>
+</g>
+</svg>

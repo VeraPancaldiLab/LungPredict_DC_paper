@@ -58,5 +58,6 @@ clinical$group = patient_group
 Compute survival analysis --> 12 NA values for PFS_bin are omitted thus 122 patients
 ```{r}
 res_clusters = compute.survival.analysis(clinical, "PFS", "PFS_bin", file_name = "Validation_Curie_PFS", 
-                                         p.value = 0.05, group_column = "group")
+                                         p.value = 0.05, group_column = "group",
+                                         group_order = c(DC_scattered = "Group1_markers", cDC2_driven = "Group3_markers", cDC1_driven = "Group2_markers"))
 ```

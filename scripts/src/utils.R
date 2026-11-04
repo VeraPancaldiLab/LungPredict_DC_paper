@@ -266,7 +266,9 @@ diff_analysis = function(RNA.counts.normalized, feature, test, ref, pval = 0.05,
 }
 
 compute.survival.analysis = function(survival.data, PFS, PFS_event, file_name = NULL, 
-                                     features = NULL, p.value = 0.05, thres = 0.5, group_column = NULL) {
+                                     features = NULL, p.value = 0.05, thres = 0.5, group_column = NULL, group_order = NULL) {
+  # group_order (optional, only with group_column): values of group_column in the order used as reference for the pairwise Cox
+  # comparisons in the forest plot (each group is compared with the groups listed BEFORE it). Names of the vector are used as labels.
   require(survival)
   
   # Prepare the data for survival analysis
@@ -333,11 +335,55 @@ compute.survival.analysis = function(survival.data, PFS, PFS_event, file_name = 
       device = "svg"
     )
 
+    ### Pairwise hazard ratios (Cox PH, 95% CI) between groups -> forest plot
+    grp_values <- if (is.null(group_order)) sort(unique(as.character(survival.data[[group_column]]))) else as.character(group_order)
+    grp_labels <- if (is.null(names(group_order))) grp_values else names(group_order)
+    pair_hr <- do.call(rbind, lapply(2:length(grp_values), function(j) {
+      do.call(rbind, lapply(seq_len(j - 1), function(i) {   # group j vs reference group i (i < j)
+        sub <- data_for_model[data_for_model$coxHL %in% paste0("Group_", grp_values[c(i, j)]), ]
+        sub$g <- factor(sub$coxHL, levels = paste0("Group_", grp_values[c(i, j)]))
+        fit <- tryCatch(survival::coxph(survival::Surv(time, status) ~ g, data = sub), error = function(e) NULL, warning = function(w) NULL)
+        out <- data.frame(contrast = paste0(grp_labels[j], " vs ", grp_labels[i]),
+                          n = paste0(sum(sub$g == levels(sub$g)[2], na.rm = TRUE), "/", sum(sub$g == levels(sub$g)[1], na.rm = TRUE)),
+                          HR = NA_real_, lower = NA_real_, upper = NA_real_, p = NA_real_)
+        if (!is.null(fit)) {
+          sm <- summary(fit)
+          out[, c("HR", "lower", "upper", "p")] <- c(sm$conf.int[1, 1], sm$conf.int[1, 3], sm$conf.int[1, 4], sm$coefficients[1, 5])
+        }
+        out
+      }))
+    }))
+    pair_hr$contrast <- as.character(pair_hr$contrast)
+    pair_hr$contrast_f <- factor(pair_hr$contrast, levels = rev(unique(pair_hr$contrast)))
+    pair_hr$label <- ifelse(is.na(pair_hr$HR), "not estimable",
+                            paste0("HR ", signif(pair_hr$HR, 3), " (", signif(pair_hr$lower, 3), "-", signif(pair_hr$upper, 3), "), p = ", signif(pair_hr$p, 2)))
+    forest <- ggplot2::ggplot(pair_hr, ggplot2::aes(x = HR, y = contrast_f)) +
+      ggplot2::geom_vline(xintercept = 1, linetype = "dashed", colour = "grey40") +
+      ggplot2::geom_errorbar(ggplot2::aes(xmin = lower, xmax = upper), orientation = "y", width = 0.2, linewidth = 0.6, na.rm = TRUE) +
+      ggplot2::geom_point(size = 3, na.rm = TRUE) +
+      ggplot2::geom_text(ggplot2::aes(x = Inf, label = label), hjust = -0.05, size = 4) +
+      ggplot2::scale_x_log10() +
+      ggplot2::coord_cartesian(clip = "off") +
+      ggplot2::labs(title = paste0("Pairwise hazard ratios (Cox PH): ", group_column),
+                    subtitle = "HR < 1: lower risk of progression/death in the first group of each contrast",
+                    x = "Hazard ratio (95% CI, log scale)", y = NULL) +
+      ggplot2::theme_bw(base_size = 14) +
+      ggplot2::theme(plot.margin = ggplot2::margin(5, 220, 5, 5))
+    ggsave(
+      filename = paste0("Results/SurvForest_", group_column, "_", file_name, ".svg"),
+      plot = forest,
+      width = 11,
+      height = 1.6 + 0.6 * nrow(pair_hr),
+      units = "in",
+      device = "svg"
+    )
+
     return(list(
       km_plot = p,
       median_PFS = medians,
       p_value = pval,
-      median_follow_up = median_follow_up
+      median_follow_up = median_follow_up,
+      pairwise_HR = pair_hr
     ))
     
   } 
