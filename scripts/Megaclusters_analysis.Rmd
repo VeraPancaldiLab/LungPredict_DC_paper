@@ -285,7 +285,8 @@ Survival analysis (66 patients)
 ```{r}
 res_clusters = compute.survival.analysis(features = df_density, survival.data = coldata, group_column = "Groups",
                                        "PFS", "PFS_event", file_name = "Patient_clusters", p.value = 0.05, thres = 0.5,
-                                       group_order = c(DC_scattered = 1, cDC2_driven = 3, cDC1_driven = 2))
+                                       group_order = c(DC_scattered = 1, cDC2_driven = 3, cDC1_driven = 2),
+                                       forest_title = "DC-based spatial patterns (mIF)")
 ```
 
 Statistical test to compare megacluster densities between Group 1 and 2+3

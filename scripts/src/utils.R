@@ -266,9 +266,10 @@ diff_analysis = function(RNA.counts.normalized, feature, test, ref, pval = 0.05,
 }
 
 compute.survival.analysis = function(survival.data, PFS, PFS_event, file_name = NULL, 
-                                     features = NULL, p.value = 0.05, thres = 0.5, group_column = NULL, group_order = NULL) {
+                                     features = NULL, p.value = 0.05, thres = 0.5, group_column = NULL, group_order = NULL, forest_title = NULL) {
   # group_order (optional, only with group_column): values of group_column in the order used as reference for the pairwise Cox
   # comparisons in the forest plot (each group is compared with the groups listed BEFORE it). Names of the vector are used as labels.
+  # forest_title (optional): title of the forest plot (default: group_column).
   require(survival)
   
   # Prepare the data for survival analysis
@@ -343,8 +344,9 @@ compute.survival.analysis = function(survival.data, PFS, PFS_event, file_name = 
         sub <- data_for_model[data_for_model$coxHL %in% paste0("Group_", grp_values[c(i, j)]), ]
         sub$g <- factor(sub$coxHL, levels = paste0("Group_", grp_values[c(i, j)]))
         fit <- tryCatch(survival::coxph(survival::Surv(time, status) ~ g, data = sub), error = function(e) NULL, warning = function(w) NULL)
+        ok <- !is.na(sub$time) & !is.na(sub$status) & !is.na(sub$g)   # patients used by the Cox model
         out <- data.frame(contrast = paste0(grp_labels[j], " vs ", grp_labels[i]),
-                          n = paste0(sum(sub$g == levels(sub$g)[2], na.rm = TRUE), "/", sum(sub$g == levels(sub$g)[1], na.rm = TRUE)),
+                          n = sum(ok), events = sum(sub$status[ok] == 1),
                           HR = NA_real_, lower = NA_real_, upper = NA_real_, p = NA_real_)
         if (!is.null(fit)) {
           sm <- summary(fit)
@@ -353,27 +355,32 @@ compute.survival.analysis = function(survival.data, PFS, PFS_event, file_name = 
         out
       }))
     }))
-    pair_hr$contrast <- as.character(pair_hr$contrast)
-    pair_hr$contrast_f <- factor(pair_hr$contrast, levels = rev(unique(pair_hr$contrast)))
+    # y-axis label: "A vs B" and "(n=.., .. events)" (n and events of the two groups together); underscores shown as hyphens
+    pair_hr$contrast <- gsub("_", "-", as.character(pair_hr$contrast))
+    pair_hr$axis_label <- paste0(pair_hr$contrast, "\n(n=", pair_hr$n, ", ", pair_hr$events, " events)")
+    pair_hr$axis_f <- factor(pair_hr$axis_label, levels = rev(unique(pair_hr$axis_label)))
     pair_hr$label <- ifelse(is.na(pair_hr$HR), "not estimable",
-                            paste0("HR ", signif(pair_hr$HR, 3), " (", signif(pair_hr$lower, 3), "-", signif(pair_hr$upper, 3), "), p = ", signif(pair_hr$p, 2)))
-    forest <- ggplot2::ggplot(pair_hr, ggplot2::aes(x = HR, y = contrast_f)) +
-      ggplot2::geom_vline(xintercept = 1, linetype = "dashed", colour = "grey40") +
-      ggplot2::geom_errorbar(ggplot2::aes(xmin = lower, xmax = upper), orientation = "y", width = 0.2, linewidth = 0.6, na.rm = TRUE) +
-      ggplot2::geom_point(size = 3, na.rm = TRUE) +
-      ggplot2::geom_text(ggplot2::aes(x = Inf, label = label), hjust = -0.05, size = 4) +
-      ggplot2::scale_x_log10() +
+                            paste0("HR ", sprintf("%.2f", pair_hr$HR), " (", sprintf("%.2f", pair_hr$lower), "\u2013", sprintf("%.2f", pair_hr$upper),
+                                   "), p=", formatC(pair_hr$p, digits = 2, format = "g", flag = "#")))
+    forest <- ggplot2::ggplot(pair_hr, ggplot2::aes(x = HR, y = axis_f)) +
+      ggplot2::geom_vline(xintercept = 1, linetype = "dashed", colour = "grey40", linewidth = 0.4) +
+      ggplot2::geom_errorbar(ggplot2::aes(xmin = lower, xmax = upper), orientation = "y", width = 0.2, linewidth = 0.5, na.rm = TRUE) +
+      ggplot2::geom_point(size = 2.5, na.rm = TRUE) +
+      ggplot2::geom_text(ggplot2::aes(x = Inf, label = label), hjust = -0.08, size = 3.2) +
+      ggplot2::scale_x_log10(breaks = c(0.03, 0.1, 0.3, 1, 3), labels = c("0.03", "0.1", "0.3", "1", "3")) +
       ggplot2::coord_cartesian(clip = "off") +
-      ggplot2::labs(title = paste0("Pairwise hazard ratios (Cox PH): ", group_column),
-                    subtitle = "HR < 1: lower risk of progression/death in the first group of each contrast",
-                    x = "Hazard ratio (95% CI, log scale)", y = NULL) +
-      ggplot2::theme_bw(base_size = 14) +
-      ggplot2::theme(plot.margin = ggplot2::margin(5, 220, 5, 5))
+      ggplot2::labs(title = if (is.null(forest_title)) group_column else forest_title,
+                    x = "Hazard ratio for PFS (95% CI, log scale)", y = NULL) +
+      ggplot2::theme_classic(base_size = 11) +
+      ggplot2::theme(plot.title = ggplot2::element_text(face = "bold", size = 11, hjust = 0.5),
+                     axis.text.y = ggplot2::element_text(size = 9, colour = "black", lineheight = 0.9),
+                     axis.text.x = ggplot2::element_text(size = 9, colour = "black"),
+                     plot.margin = ggplot2::margin(5, 150, 5, 5))
     ggsave(
       filename = paste0("Results/SurvForest_", group_column, "_", file_name, ".svg"),
       plot = forest,
-      width = 11,
-      height = 1.6 + 0.6 * nrow(pair_hr),
+      width = 8.5,
+      height = 1.4 + 0.65 * nrow(pair_hr),
       units = "in",
       device = "svg"
     )
